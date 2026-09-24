@@ -3,9 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Poker Cash Game & Virtual Table</title>
+    <title>Poker Cash Game & Realtime Table</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK (Modular v10) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue, get, update } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+        // ==========================================
+        // 🛠️ วาง Firebase Config ของคุณตรงนี้ครับ!
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            databaseURL: "YOUR_DATABASE_URL",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Expose Firebase functions to global scope for the app
+        window.FB_db = db;
+        window.FB_ref = ref;
+        window.FB_set = set;
+        window.FB_onValue = onValue;
+        window.FB_get = get;
+        window.FB_update = update;
+    </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Prompt', sans-serif; }
@@ -26,8 +55,8 @@
         <!-- Header -->
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
             <div>
-                <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Virtual Table</h1>
-                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Casino Layout, Live Mid-Game Add & Big Cards</p>
+                <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Realtime Table</h1>
+                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Casino Layout, Firebase Cloud Sync & Big Cards</p>
             </div>
             <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
                 Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
@@ -267,6 +296,7 @@
         };
 
         let tempPresetList = [];
+        let unsubscribeFirebase = null;
 
         window.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
@@ -314,7 +344,7 @@
             renderPresetList();
         }
 
-        function createRoom() {
+        async function createRoom() {
             const buyInVal = parseInt(document.getElementById('setup-buyin').value) || 300;
             const sbVal = parseInt(document.getElementById('setup-sb').value) || 10;
             const bbVal = parseInt(document.getElementById('setup-bb').value) || 20;
@@ -347,7 +377,7 @@
                 gameState.players[name] = { chips: buyInVal, totalBuyIn: buyInVal, holeCards: [], folded: false, currentBet: 0 };
             });
 
-            saveStateToLocalStorage();
+            await saveStateToFirebase();
             document.getElementById('join-room-code').value = roomCode;
             loadRoomToJoin();
             alert(`Room created successfully! Code: ${roomCode}`);
@@ -361,7 +391,7 @@
             });
         }
 
-        function addPlayerMidGame() {
+        async function addPlayerMidGame() {
             if(!gameState.isHost) return;
             const input = document.getElementById('midgame-new-player');
             const name = input.value.trim();
@@ -378,24 +408,28 @@
             gameState.playerOrder.push(name);
             gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn, holeCards: [], folded: true, currentBet: 0 };
             input.value = '';
-            saveStateToLocalStorage();
-            renderGameTable();
+            await saveStateToFirebase();
             alert(`Player "${name}" added to the table successfully!`);
         }
 
-        function loadRoomToJoin() {
+        async function loadRoomToJoin() {
             const code = document.getElementById('join-room-code').value.trim().toUpperCase();
-            const saved = localStorage.getItem('poker_' + code);
-            if(!saved) {
-                alert('Room not found. Please check room code.');
+            if(!code) return;
+
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + code);
+            const snapshot = await window.FB_get(roomRef);
+            
+            if(!snapshot.exists()) {
+                alert('Room not found on Firebase. Please check code.');
                 return;
             }
-            const data = JSON.parse(saved);
+
+            const data = snapshot.val();
             gameState.roomCode = code;
             gameState.buyIn = data.buyIn;
             gameState.smallBlind = data.smallBlind || 10;
             gameState.bigBlind = data.bigBlind || 20;
-            gameState.players = data.players;
+            gameState.players = data.players || {};
             gameState.isClosed = data.isClosed;
             gameState.pot = data.pot || 0;
             gameState.currentBet = data.currentBet || 0;
@@ -408,7 +442,7 @@
             gameState.activeTurnIndex = data.activeTurnIndex || 0;
 
             const select = document.getElementById('join-name-select');
-            select.innerHTML = Object.keys(data.players).map(name => `<option value="${name}">${name}</option>`).join('');
+            select.innerHTML = Object.keys(gameState.players).map(name => `<option value="${name}">${name}</option>`).join('');
             
             document.getElementById('join-selection-area').classList.remove('hidden');
         }
@@ -455,17 +489,17 @@
             }
 
             renderGameTable();
-            startPollingState();
+            startFirebaseRealtimeSync();
         }
 
-        let pollInterval = null;
-        function startPollingState() {
-            if(pollInterval) clearInterval(pollInterval);
-            pollInterval = setInterval(() => {
-                const saved = localStorage.getItem('poker_' + gameState.roomCode);
-                if(saved) {
-                    const data = JSON.parse(saved);
-                    gameState.players = data.players;
+        function startFirebaseRealtimeSync() {
+            if(unsubscribeFirebase) unsubscribeFirebase();
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
+            
+            unsubscribeFirebase = window.FB_onValue(roomRef, (snapshot) => {
+                if(snapshot.exists()) {
+                    const data = snapshot.val();
+                    gameState.players = data.players || {};
                     gameState.isClosed = data.isClosed;
                     gameState.pot = data.pot || 0;
                     gameState.currentBet = data.currentBet || 0;
@@ -485,10 +519,10 @@
                         renderGameTable();
                     }
                 }
-            }, 1000);
+            });
         }
 
-        function saveStateToLocalStorage() {
+        async function saveStateToFirebase() {
             const data = {
                 buyIn: gameState.buyIn,
                 smallBlind: gameState.smallBlind,
@@ -505,17 +539,18 @@
                 activeTurnIndex: gameState.activeTurnIndex,
                 players: gameState.players
             };
-            localStorage.setItem('poker_' + gameState.roomCode, JSON.stringify(data));
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
+            await window.FB_set(roomRef, data);
         }
 
-        function updateBlinds() {
+        async function updateBlinds() {
             if(!gameState.isHost) return;
             const sb = parseInt(document.getElementById('quick-sb').value) || 10;
             const bb = parseInt(document.getElementById('quick-bb').value) || 20;
             gameState.smallBlind = sb;
             gameState.bigBlind = bb;
             document.getElementById('display-blinds').innerText = `${sb}/${bb}`;
-            saveStateToLocalStorage();
+            await saveStateToFirebase();
             alert(`Blinds updated to ${sb}/${bb} THB`);
         }
 
@@ -535,7 +570,7 @@
             return deck;
         }
 
-        function startNewHand() {
+        async function startNewHand() {
             if(!gameState.isHost) return;
             
             const numPlayers = gameState.playerOrder.length;
@@ -568,15 +603,14 @@
                 }
             });
 
-            saveStateToLocalStorage();
-            renderGameTable();
+            await saveStateToFirebase();
         }
 
-        function advanceStage() {
+        async function advanceStage() {
             let deck = createFullDeck();
             
             gameState.playerOrder.forEach(name => {
-                gameState.players[name].currentBet = 0;
+                if(gameState.players[name]) gameState.players[name].currentBet = 0;
             });
             gameState.currentBet = 0;
             gameState.activeTurnIndex = (gameState.dealerIndex + 1) % gameState.playerOrder.length;
@@ -594,17 +628,16 @@
                 gameState.stage = 'Showdown';
             }
             
-            saveStateToLocalStorage();
-            renderGameTable();
+            await saveStateToFirebase();
         }
 
-        function checkBettingRoundComplete() {
-            const activePlayers = gameState.playerOrder.filter(name => !gameState.players[name].folded);
+        async function checkBettingRoundComplete() {
+            if(!gameState.isHost) return;
+            const activePlayers = gameState.playerOrder.filter(name => gameState.players[name] && !gameState.players[name].folded);
             
             if(activePlayers.length === 1) {
                 gameState.stage = 'Hand Ended';
-                saveStateToLocalStorage();
-                renderGameTable();
+                await saveStateToFirebase();
                 return;
             }
 
@@ -613,17 +646,15 @@
             if(allMatched) {
                 if(gameState.stage === 'River' || gameState.stage === 'Showdown') {
                     gameState.stage = 'Showdown';
-                    saveStateToLocalStorage();
-                    renderGameTable();
+                    await saveStateToFirebase();
                     return;
                 }
 
                 gameState.stage = gameState.stage + ' (Completing...)';
-                saveStateToLocalStorage();
-                renderGameTable();
+                await saveStateToFirebase();
 
-                setTimeout(() => {
-                    advanceStage();
+                setTimeout(async () => {
+                    await advanceStage();
                 }, 3000);
             }
         }
@@ -644,7 +675,7 @@
             document.getElementById('modal-award-pot').classList.add('hidden');
         }
 
-        function confirmAwardPot() {
+        async function confirmAwardPot() {
             const checkboxes = document.querySelectorAll('input[name="pot-winner"]:checked');
             if(checkboxes.length === 0) {
                 alert('Please select at least one winner');
@@ -663,11 +694,10 @@
             gameState.pot = 0;
             gameState.stage = 'Hand Ended';
             closeAwardPotModal();
-            saveStateToLocalStorage();
-            renderGameTable();
+            await saveStateToFirebase();
         }
 
-        function playerAction(type) {
+        async function playerAction(type) {
             const me = gameState.myPlayerName;
             if(!me || !gameState.players[me]) return;
             
@@ -712,9 +742,8 @@
             }
 
             advanceTurn();
-            saveStateToLocalStorage();
-            renderGameTable();
-            checkBettingRoundComplete();
+            await saveStateToFirebase();
+            await checkBettingRoundComplete();
         }
 
         function advanceTurn() {
@@ -723,7 +752,7 @@
                 gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % gameState.playerOrder.length;
                 attempts++;
                 let pName = gameState.playerOrder[gameState.activeTurnIndex];
-                if(!gameState.players[pName].folded) break;
+                if(gameState.players[pName] && !gameState.players[pName].folded) break;
             } while(attempts < gameState.playerOrder.length);
         }
 
@@ -732,7 +761,6 @@
             document.getElementById('table-pot').innerText = gameState.pot;
             document.getElementById('table-current-bet').innerText = gameState.currentBet;
 
-            // Turn Indicator in Center
             const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex] || 'None';
             const turnIndicator = document.getElementById('center-turn-indicator');
             if(gameState.stage === 'Waiting to Deal' || gameState.stage === 'Hand Ended') {
@@ -741,9 +769,8 @@
                 turnIndicator.innerText = `👉 CURRENT TURN: ${currentTurnPlayer}`;
             }
 
-            // Community cards (Bigger size: text-base / px-3.5 / py-2.5)
             const ccDiv = document.getElementById('community-cards');
-            if(gameState.communityCards.length === 0) {
+            if(!gameState.communityCards || gameState.communityCards.length === 0) {
                 ccDiv.innerHTML = `<span class="text-xs text-emerald-400/60 italic">(Waiting for deal)</span>`;
             } else {
                 ccDiv.innerHTML = gameState.communityCards.map(c => `
@@ -751,7 +778,6 @@
                 `).join('');
             }
 
-            // My Hole Cards (Bigger size: text-base / px-3.5 / py-2)
             const myCardDiv = document.getElementById('my-hole-cards');
             const myData = gameState.players[gameState.myPlayerName];
             if(myData && myData.holeCards && myData.holeCards.length > 0) {
@@ -762,12 +788,11 @@
                 myCardDiv.innerHTML = `<span class="text-xs text-slate-500 italic">No cards dealt</span>`;
             }
 
-            // Render 10-Player Oval Circular Layout
             const seatsContainer = document.getElementById('poker-seats-container');
             const totalPlayers = gameState.playerOrder.length;
 
             seatsContainer.innerHTML = gameState.playerOrder.map((name, idx) => {
-                const p = gameState.players[name];
+                const p = gameState.players[name] || { chips: 0, folded: false, currentBet: 0 };
                 const isMyTurn = (idx === gameState.activeTurnIndex && !gameState.stage.includes('Completing') && gameState.stage !== 'Waiting to Deal' && gameState.stage !== 'Hand Ended' && gameState.stage !== 'Showdown');
                 
                 let badges = [];
@@ -803,20 +828,18 @@
             }).join('');
         }
 
-        function adjustChips(name, amount) {
+        async function adjustChips(name, amount) {
             if(!gameState.players[name]) return;
             gameState.players[name].chips += amount;
             if(gameState.players[name].chips < 0) gameState.players[name].chips = 0;
-            saveStateToLocalStorage();
-            renderGameTable();
+            await saveStateToFirebase();
         }
 
-        function reBuy(name) {
+        async function reBuy(name) {
             if(!gameState.players[name]) return;
             gameState.players[name].chips += gameState.buyIn;
             gameState.players[name].totalBuyIn += gameState.buyIn;
-            saveStateToLocalStorage();
-            renderGameTable();
+            await saveStateToFirebase();
         }
 
         function openCloseTableModal() {
@@ -840,7 +863,7 @@
             document.getElementById('modal-close-table').classList.add('hidden');
         }
 
-        function confirmFinalizeGame() {
+        async function confirmFinalizeGame() {
             Object.keys(gameState.players).forEach(name => {
                 const input = document.getElementById(`final-chip-${name}`);
                 if(input) {
@@ -852,13 +875,13 @@
             });
 
             gameState.isClosed = true;
-            saveStateToLocalStorage();
+            await saveStateToFirebase();
             document.getElementById('modal-close-table').classList.add('hidden');
             showSummaryView();
         }
 
         function showSummaryView() {
-            if(pollInterval) clearInterval(pollInterval);
+            if(unsubscribeFirebase) unsubscribeFirebase();
             document.getElementById('view-game').classList.add('hidden');
             document.getElementById('view-summary').classList.remove('hidden');
 
@@ -895,7 +918,7 @@
         }
 
         function leaveGame() {
-            if(pollInterval) clearInterval(pollInterval);
+            if(unsubscribeFirebase) unsubscribeFirebase();
             location.reload();
         }
 
