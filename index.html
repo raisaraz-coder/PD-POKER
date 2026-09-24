@@ -10,21 +10,24 @@
         @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Prompt', sans-serif; }
         @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 15px rgba(245, 158, 11, 0.6); border-color: rgb(245, 158, 11); }
-            50% { box-shadow: 0 0 5px rgba(245, 158, 11, 0.2); border-color: rgb(217, 119, 6); }
+            0%, 100% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.8); border-color: rgb(245, 158, 11); }
+            50% { box-shadow: 0 0 8px rgba(245, 158, 11, 0.3); border-color: rgb(217, 119, 6); }
+        }
         .active-turn {
             animation: pulse-glow 1.5s infinite;
+            transform: scale(1.05);
+            z-index: 20;
         }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center justify-start p-2 md:p-4">
 
-    <div class="w-full max-w-5xl bg-slate-800 rounded-2xl shadow-2xl p-4 md:p-6 border border-slate-700 mt-2">
+    <div class="w-full max-w-6xl bg-slate-800 rounded-2xl shadow-2xl p-4 md:p-6 border border-slate-700 mt-2">
         <!-- Header -->
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
             <div>
                 <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Virtual Table</h1>
-                <p class="text-xs md:text-sm text-slate-400">Full 52-Card Deck, Blinds Rotation, Turn Glow & Cash Game Ledger</p>
+                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Casino Layout, Custom Blinds & Full Deck Shuffling</p>
             </div>
             <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
                 Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
@@ -37,15 +40,25 @@
                 <!-- Host Panel -->
                 <div class="bg-slate-900/50 p-5 rounded-xl border border-slate-700 space-y-4">
                     <h2 class="text-lg font-semibold text-amber-300">👑 Create Room (Host)</h2>
-                    <div>
-                        <label class="block text-xs text-slate-400 mb-1">Buy-In per player (THB)</label>
-                        <input type="number" id="setup-buyin" value="300" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-400">
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Buy-In (THB)</label>
+                            <input type="number" id="setup-buyin" value="300" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Small Blind</label>
+                            <input type="number" id="setup-sb" value="10" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Big Blind</label>
+                            <input type="number" id="setup-bb" value="20" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400">
+                        </div>
                     </div>
                     <div>
-                        <label class="block text-xs text-slate-400 mb-1">Add Player Names (Include yourself if playing)</label>
+                        <label class="block text-xs text-slate-400 mb-1">Add Player Names (Up to 10 players)</label>
                         <div class="flex gap-2">
-                            <input type="text" id="setup-player-name" placeholder="Enter name..." class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-400">
-                            <button onclick="addPresetPlayer()" class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-medium transition">Add</button>
+                            <input type="text" id="setup-player-name" placeholder="Enter player name..." class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400">
+                            <button onclick="addPresetPlayer()" class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition">Add</button>
                         </div>
                     </div>
                     <div>
@@ -88,64 +101,75 @@
         <div id="view-game" class="hidden space-y-4">
             <!-- Top Controls bar -->
             <div class="flex flex-wrap justify-between items-center bg-slate-900/60 p-3 rounded-xl border border-slate-700 gap-2">
-                <div>
-                    <span class="text-xs text-slate-400">Buy-In: <strong id="display-buyin" class="text-amber-400">300</strong> THB | Blinds: <span class="text-white font-mono">10/20</span></span>
-                    <h3 class="text-sm md:text-base font-bold text-white" id="game-status-text">Table Active</h3>
+                <div class="flex items-center gap-4">
+                    <div>
+                        <span class="text-xs text-slate-400">Buy-In: <strong id="display-buyin" class="text-amber-400">300</strong> THB</span>
+                        <span class="text-xs text-slate-400 ml-3">Blinds: <strong id="display-blinds" class="text-white font-mono">10/20</strong> THB</span>
+                    </div>
+                    <h3 class="text-sm font-bold text-emerald-400 hidden md:block" id="game-status-text">Table Active</h3>
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="openCloseTableModal()" id="host-close-btn" class="hidden bg-rose-600 hover:bg-rose-500 text-white text-xs md:text-sm font-bold px-3 py-2 rounded-lg transition">🛑 Close Table & Summary</button>
-                    <button onclick="leaveGame()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs md:text-sm px-3 py-2 rounded-lg transition">Leave</button>
+                <div class="flex items-center gap-2">
+                    <!-- Host Blind Adjuster Modal Trigger / Quick Panel -->
+                    <div id="host-blind-controls" class="hidden items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700">
+                        <span class="text-[10px] text-slate-400">SB/BB:</span>
+                        <input type="number" id="quick-sb" class="w-12 bg-slate-900 border border-slate-600 rounded text-xs px-1 text-white text-center" value="10">
+                        <span class="text-slate-500">/</span>
+                        <input type="number" id="quick-bb" class="w-12 bg-slate-900 border border-slate-600 rounded text-xs px-1 text-white text-center" value="20">
+                        <button onclick="updateBlinds()" class="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-2 py-1 rounded">Set</button>
+                    </div>
+                    <button onclick="openCloseTableModal()" id="host-close-btn" class="hidden bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition">🛑 Close Table</button>
+                    <button onclick="leaveGame()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-2 rounded-lg transition">Leave</button>
                 </div>
             </div>
 
-            <!-- Virtual Poker Table Area -->
-            <div class="bg-emerald-900/40 border-4 border-emerald-700/60 rounded-3xl p-5 relative flex flex-col items-center justify-between min-h-[300px] shadow-inner">
-                <div class="flex justify-between w-full text-xs text-emerald-300/80 font-mono">
-                    <span>Stage: <strong id="table-stage" class="text-white">Waiting to Deal</strong></span>
-                    <span>POT: <strong id="table-pot" class="text-amber-400 text-base">0</strong> THB</span>
-                    <span>Current Bet: <strong id="table-current-bet" class="text-white">0</strong> THB</span>
-                </div>
+            <!-- Authentic Oval Poker Table Layout -->
+            <div class="relative w-full h-[520px] bg-emerald-900 border-[10px] border-amber-950 rounded-[180px] shadow-2xl flex flex-col items-center justify-center p-4 my-2 overflow-hidden">
+                <!-- Inner felt ring graphic -->
+                <div class="absolute inset-4 border-2 border-emerald-700/60 rounded-[150px] pointer-events-none"></div>
 
-                <!-- Community Cards Center -->
-                <div class="my-4 flex flex-col items-center space-y-2">
-                    <span class="text-xs text-emerald-200 uppercase tracking-widest">Community Cards</span>
-                    <div id="community-cards" class="flex gap-2 min-h-[50px] items-center">
+                <!-- Center Table Info: Pot, Stage, Community Cards -->
+                <div class="z-10 flex flex-col items-center space-y-2 bg-emerald-950/70 border border-emerald-700/50 px-6 py-4 rounded-2xl shadow-inner backdrop-blur-sm">
+                    <div class="flex gap-4 text-xs font-mono text-emerald-300">
+                        <span>STAGE: <strong id="table-stage" class="text-white">Waiting to Deal</strong></span>
+                        <span>POT: <strong id="table-pot" class="text-amber-400 text-base">0</strong> THB</span>
+                        <span>BET: <strong id="table-current-bet" class="text-white">0</strong> THB</span>
+                    </div>
+
+                    <!-- Community Cards -->
+                    <div id="community-cards" class="flex gap-2 min-h-[45px] items-center">
                         <span class="text-xs text-emerald-400/60 italic">(Waiting for deal)</span>
                     </div>
+
+                    <!-- Host Controls on Table Center -->
+                    <div id="dealer-controls" class="hidden flex flex-wrap justify-center gap-1.5 pt-1">
+                        <button onclick="startNewHand()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] px-2.5 py-1.5 rounded-md shadow">🃏 Deal Hand</button>
+                        <button onclick="nextPokerStage()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-md shadow">➡️ Next Stage</button>
+                        <button onclick="openAwardPotModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-md shadow">🏆 Award Pot</button>
+                    </div>
                 </div>
 
-                <!-- Host / Dealer Actions -->
-                <div id="dealer-controls" class="hidden flex flex-wrap justify-center gap-2 my-2">
-                    <button onclick="startNewHand()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-2 rounded-lg shadow">🃏 Deal New Hand</button>
-                    <button onclick="nextPokerStage()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3 py-2 rounded-lg shadow">➡️ Next Stage (Flop/Turn/River)</button>
-                    <button onclick="openAwardPotModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3 py-2 rounded-lg shadow">🏆 Award Pot</button>
-                </div>
-
-                <!-- Player's Action Panel -->
-                <div class="w-full bg-slate-900/80 border border-slate-700 rounded-xl p-3 flex flex-col md:flex-row items-center justify-between gap-3 mt-3">
-                    <div class="flex items-center gap-3">
-                        <div>
-                            <span class="text-xs text-slate-400">Your Hand (<span id="my-name-display" class="text-amber-300 font-bold"></span>)</span>
-                            <div id="my-hole-cards" class="flex gap-2 mt-1">
-                                <span class="text-xs text-slate-500 italic">No cards dealt</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex flex-wrap gap-2 items-center">
-                        <button onclick="playerAction('fold')" class="bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Fold</button>
-                        <button onclick="playerAction('checkcall')" class="bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Check / Call</button>
-                        <div class="flex items-center gap-1">
-                            <input type="number" id="raise-amount" value="40" class="w-16 bg-slate-800 border border-slate-600 rounded text-xs px-2 py-1.5 text-white text-right">
-                            <button onclick="playerAction('raise')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Raise / Bet</button>
-                        </div>
-                    </div>
+                <!-- Circular Seats Container (Up to 10 players rendered via absolute positioning) -->
+                <div id="poker-seats-container" class="absolute inset-0 pointer-events-none">
                 </div>
             </div>
 
-            <!-- Players Chip Stack Management Grid -->
-            <div>
-                <h4 class="text-sm font-semibold text-slate-300 mb-2">💰 Players Chip Stacks & Positions</h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" id="players-grid">
+            <!-- Player's Action Panel (Fixed Bottom Bar for current user action) -->
+            <div class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 flex flex-col md:flex-row items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <div>
+                        <span class="text-xs text-slate-400">Your Hand (<span id="my-name-display" class="text-amber-300 font-bold"></span>)</span>
+                        <div id="my-hole-cards" class="flex gap-2 mt-1">
+                            <span class="text-xs text-slate-500 italic">No cards dealt</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2 items-center">
+                    <button onclick="playerAction('fold')" class="bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Fold</button>
+                    <button onclick="playerAction('checkcall')" class="bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Check / Call</button>
+                    <div class="flex items-center gap-1">
+                        <input type="number" id="raise-amount" value="40" class="w-16 bg-slate-800 border border-slate-600 rounded text-xs px-2 py-1.5 text-white text-right">
+                        <button onclick="playerAction('raise')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Raise / Bet</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -218,6 +242,8 @@
         let gameState = {
             roomCode: '',
             buyIn: 300,
+            smallBlind: 10,
+            bigBlind: 20,
             isHost: false,
             myPlayerName: '',
             isClosed: false,
@@ -230,7 +256,7 @@
             bbIndex: 2,
             activeTurnIndex: 0,
             playerOrder: [],
-            players: {} // name: { chips, totalBuyIn, holeCards, folded }
+            players: {}
         };
 
         let tempPresetList = [];
@@ -239,6 +265,10 @@
             const input = document.getElementById('setup-player-name');
             const name = input.value.trim();
             if(!name) return;
+            if(tempPresetList.length >= 10) {
+                alert('Maximum 10 players allowed per table.');
+                return;
+            }
             if(tempPresetList.includes(name)) {
                 alert('Player name already exists');
                 return;
@@ -269,6 +299,9 @@
 
         function createRoom() {
             const buyInVal = parseInt(document.getElementById('setup-buyin').value) || 300;
+            const sbVal = parseInt(document.getElementById('setup-sb').value) || 10;
+            const bbVal = parseInt(document.getElementById('setup-bb').value) || 20;
+
             if(tempPresetList.length === 0) {
                 alert('Please add at least 1 player before launching room');
                 return;
@@ -277,6 +310,8 @@
             const roomCode = 'ROOM-' + Math.floor(1000 + Math.random() * 9000);
             gameState.roomCode = roomCode;
             gameState.buyIn = buyInVal;
+            gameState.smallBlind = sbVal;
+            gameState.bigBlind = bbVal;
             gameState.isHost = true;
             gameState.isClosed = false;
             gameState.pot = 0;
@@ -311,6 +346,8 @@
             const data = JSON.parse(saved);
             gameState.roomCode = code;
             gameState.buyIn = data.buyIn;
+            gameState.smallBlind = data.smallBlind || 10;
+            gameState.bigBlind = data.bigBlind || 20;
             gameState.players = data.players;
             gameState.isClosed = data.isClosed;
             gameState.pot = data.pot || 0;
@@ -350,14 +387,22 @@
             document.getElementById('current-room-code').innerText = gameState.roomCode;
             document.getElementById('current-role-badge').innerText = gameState.myPlayerName + (gameState.isHost ? ' (Host 👑)' : ' (Player)');
             document.getElementById('display-buyin').innerText = gameState.buyIn;
+            document.getElementById('display-blinds').innerText = `${gameState.smallBlind}/${gameState.bigBlind}`;
             document.getElementById('my-name-display').innerText = gameState.myPlayerName;
+
+            document.getElementById('quick-sb').value = gameState.smallBlind;
+            document.getElementById('quick-bb').value = gameState.bigBlind;
 
             if(gameState.isHost) {
                 document.getElementById('host-close-btn').classList.remove('hidden');
                 document.getElementById('dealer-controls').classList.remove('hidden');
+                document.getElementById('host-blind-controls').classList.remove('flex');
+                document.getElementById('host-blind-controls').classList.add('flex');
             } else {
                 document.getElementById('host-close-btn').classList.add('hidden');
                 document.getElementById('dealer-controls').classList.add('hidden');
+                document.getElementById('host-blind-controls').classList.remove('flex');
+                document.getElementById('host-blind-controls').classList.add('hidden');
             }
 
             renderGameTable();
@@ -382,6 +427,8 @@
                     gameState.sbIndex = data.sbIndex || 0;
                     gameState.bbIndex = data.bbIndex || 0;
                     gameState.activeTurnIndex = data.activeTurnIndex || 0;
+                    gameState.smallBlind = data.smallBlind || 10;
+                    gameState.bigBlind = data.bigBlind || 20;
 
                     if(gameState.isClosed) {
                         showSummaryView();
@@ -395,6 +442,8 @@
         function saveStateToLocalStorage() {
             const data = {
                 buyIn: gameState.buyIn,
+                smallBlind: gameState.smallBlind,
+                bigBlind: gameState.bigBlind,
                 isClosed: gameState.isClosed,
                 pot: gameState.pot,
                 currentBet: gameState.currentBet,
@@ -410,7 +459,17 @@
             localStorage.setItem('poker_' + gameState.roomCode, JSON.stringify(data));
         }
 
-        // True 52-Card Deck Shuffler (Fisher-Yates)
+        function updateBlinds() {
+            if(!gameState.isHost) return;
+            const sb = parseInt(document.getElementById('quick-sb').value) || 10;
+            const bb = parseInt(document.getElementById('quick-bb').value) || 20;
+            gameState.smallBlind = sb;
+            gameState.bigBlind = bb;
+            document.getElementById('display-blinds').innerText = `${sb}/${bb}`;
+            saveStateToLocalStorage();
+            alert(`Blinds updated to ${sb}/${bb} THB`);
+        }
+
         function createFullDeck() {
             const suits = ['♠️', '♥️', '♦️', '♣️'];
             const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -420,7 +479,6 @@
                     deck.push(v + s);
                 }
             }
-            // Shuffle
             for(let i = deck.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [deck[i], deck[j]] = [deck[j], deck[i]];
@@ -431,30 +489,28 @@
         function startNewHand() {
             if(!gameState.isHost) return;
             
-            // Rotate dealer button
             const numPlayers = gameState.playerOrder.length;
             gameState.dealerIndex = (gameState.dealerIndex + 1) % numPlayers;
             gameState.sbIndex = (gameState.dealerIndex + 1) % numPlayers;
             gameState.bbIndex = (gameState.dealerIndex + 2) % numPlayers;
-            gameState.activeTurnIndex = (gameState.bbIndex + 1) % numPlayers; // Action starts after BB pre-flop
+            gameState.activeTurnIndex = (gameState.bbIndex + 1) % numPlayers;
 
             let deck = createFullDeck();
             gameState.pot = 0;
-            gameState.currentBet = 20; // Big blind standard
+            gameState.currentBet = gameState.bigBlind;
             gameState.stage = 'Pre-Flop';
             gameState.communityCards = [];
 
-            // Deal hole cards & deduct blinds
             gameState.playerOrder.forEach((name, idx) => {
                 gameState.players[name].holeCards = [deck.pop(), deck.pop()];
                 gameState.players[name].folded = false;
                 
                 if(idx === gameState.sbIndex) {
-                    let sbAmt = Math.min(10, gameState.players[name].chips);
+                    let sbAmt = Math.min(gameState.smallBlind, gameState.players[name].chips);
                     gameState.players[name].chips -= sbAmt;
                     gameState.pot += sbAmt;
                 } else if(idx === gameState.bbIndex) {
-                    let bbAmt = Math.min(20, gameState.players[name].chips);
+                    let bbAmt = Math.min(gameState.bigBlind, gameState.players[name].chips);
                     gameState.players[name].chips -= bbAmt;
                     gameState.pot += bbAmt;
                 }
@@ -487,7 +543,6 @@
             renderGameTable();
         }
 
-        // Award Pot Modal with checkboxes
         function openAwardPotModal() {
             const container = document.getElementById('award-winners-list');
             document.getElementById('award-pot-amount').innerText = gameState.pot;
@@ -527,7 +582,6 @@
             renderGameTable();
         }
 
-        // Turn-based actions
         function playerAction(type) {
             const me = gameState.myPlayerName;
             if(!me || !gameState.players[me]) return;
@@ -566,7 +620,6 @@
                 }
             }
 
-            // Advance turn to next active (non-folded) player
             advanceTurn();
             saveStateToLocalStorage();
             renderGameTable();
@@ -593,51 +646,60 @@
                 ccDiv.innerHTML = `<span class="text-xs text-emerald-400/60 italic">(Waiting for deal)</span>`;
             } else {
                 ccDiv.innerHTML = gameState.communityCards.map(c => `
-                    <div class="bg-white text-slate-900 font-bold px-3 py-2 rounded-lg shadow border border-slate-300 text-sm md:text-base">${c}</div>
+                    <div class="bg-white text-slate-900 font-bold px-2.5 py-1.5 rounded shadow border border-slate-300 text-sm">${c}</div>
                 `).join('');
             }
 
-            // My hand
+            // My hand bottom bar
             const myCardDiv = document.getElementById('my-hole-cards');
             const myData = gameState.players[gameState.myPlayerName];
             if(myData && myData.holeCards && myData.holeCards.length > 0) {
                 myCardDiv.innerHTML = myData.holeCards.map(c => `
-                    <div class="bg-amber-100 text-slate-900 font-bold px-3 py-1.5 rounded shadow border border-amber-300 text-sm">${c}</div>
+                    <div class="bg-amber-100 text-slate-900 font-bold px-2.5 py-1 rounded shadow border border-amber-300 text-xs">${c}</div>
                 `).join('') + (myData.folded ? `<span class="text-xs text-rose-400 font-bold ml-2 self-center">(Folded)</span>` : '');
             } else {
                 myCardDiv.innerHTML = `<span class="text-xs text-slate-500 italic">No cards dealt</span>`;
             }
 
-            // Render Player Grid with Turn Highlighting & Positions (D, SB, BB)
-            const grid = document.getElementById('players-grid');
-            grid.innerHTML = gameState.playerOrder.map((name, idx) => {
+            // Render 10-Player Oval Circular Layout
+            const seatsContainer = document.getElementById('poker-seats-container');
+            const totalPlayers = gameState.playerOrder.length;
+
+            seatsContainer.innerHTML = gameState.playerOrder.map((name, idx) => {
                 const p = gameState.players[name];
                 const isMyTurn = (idx === gameState.activeTurnIndex && gameState.stage !== 'Waiting to Deal' && gameState.stage !== 'Hand Ended');
+                
                 let badges = [];
-                if(idx === gameState.dealerIndex) badges.push(`<span class="bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">D</span>`);
-                if(idx === gameState.sbIndex) badges.push(`<span class="bg-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">SB</span>`);
-                if(idx === gameState.bbIndex) badges.push(`<span class="bg-amber-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">BB</span>`);
+                if(idx === gameState.dealerIndex) badges.push(`<span class="bg-blue-600 text-white text-[9px] px-1 py-0.5 rounded font-bold">D</span>`);
+                if(idx === gameState.sbIndex) badges.push(`<span class="bg-purple-600 text-white text-[9px] px-1 py-0.5 rounded font-bold">SB</span>`);
+                if(idx === gameState.bbIndex) badges.push(`<span class="bg-amber-600 text-white text-[9px] px-1 py-0.5 rounded font-bold">BB</span>`);
+
+                // Calculate elliptical coordinates (percentage based around the oval table)
+                // angle in radians around center
+                const angle = (idx / totalPlayers) * 2 * Math.PI - Math.PI / 2;
+                // Oval radiuses
+                const rx = 42; // horizontal radius %
+                const ry = 36; // vertical radius %
+                const x = 50 + rx * Math.cos(angle);
+                const y = 50 + ry * Math.sin(angle);
 
                 return `
-                    <div class="bg-slate-800/90 border ${isMyTurn ? 'active-turn border-amber-400 ring-2 ring-amber-400/50' : (name === gameState.myPlayerName ? 'border-emerald-500' : 'border-slate-700')} rounded-xl p-3 flex flex-col justify-between space-y-2 transition duration-300">
-                        <div class="flex justify-between items-center">
-                            <div class="flex items-center gap-1.5 flex-wrap">
-                                <span class="font-bold text-white text-sm">${name} ${name === gameState.myPlayerName ? '(You)' : ''} ${p.folded ? '🔴' : ''}</span>
-                                ${badges.join(' ')}
+                    <div class="absolute pointer-events-auto transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300" style="left: ${x}%; top: ${y}%;">
+                        <div class="bg-slate-900/95 border ${isMyTurn ? 'active-turn border-amber-400 ring-2 ring-amber-400/70' : (name === gameState.myPlayerName ? 'border-emerald-500' : 'border-slate-700')} rounded-xl p-2 w-32 flex flex-col items-center shadow-xl">
+                            <div class="flex items-center justify-between w-full text-[11px] mb-0.5">
+                                <span class="font-bold text-white truncate max-w-[70px]" title="${name}">${name}</span>
+                                <div class="flex gap-0.5">${badges.join('')}</div>
                             </div>
-                            <span class="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-amber-300">Buy-in: ${p.totalBuyIn} ฿</span>
+                            <div class="text-emerald-400 font-mono font-bold text-xs">${p.chips} ฿</div>
+                            <div class="text-[9px] text-slate-400">${p.folded ? '🔴 Folded' : `Buy: ${p.totalBuyIn}`}</div>
+                            
+                            ${gameState.isHost || name === gameState.myPlayerName ? `
+                                <div class="flex gap-1 mt-1 w-full">
+                                    <button onclick="adjustChips('${name}', 100)" class="bg-slate-800 hover:bg-slate-700 text-[9px] px-1.5 py-0.5 rounded text-white flex-1">+100</button>
+                                    <button onclick="reBuy('${name}')" class="bg-amber-600 hover:bg-amber-500 text-[9px] px-1.5 py-0.5 rounded text-white font-medium">Re</button>
+                                </div>
+                            ` : ''}
                         </div>
-                        <div class="bg-slate-900/50 p-2 rounded-lg text-center">
-                            <span class="text-[10px] text-slate-400">Current Chips</span>
-                            <div class="text-lg font-bold text-emerald-400 font-mono">${p.chips} ฿</div>
-                        </div>
-                        ${gameState.isHost || name === gameState.myPlayerName ? `
-                            <div class="flex gap-1">
-                                <button onclick="adjustChips('${name}', 100)" class="flex-1 bg-slate-700 hover:bg-slate-600 text-[11px] py-1 rounded text-white">+100</button>
-                                <button onclick="adjustChips('${name}', -100)" class="flex-1 bg-slate-700 hover:bg-slate-600 text-[11px] py-1 rounded text-white">-100</button>
-                                <button onclick="reBuy('${name}')" class="bg-amber-600 hover:bg-amber-500 text-[11px] px-2 py-1 rounded text-white">Re-buy</button>
-                            </div>
-                        ` : ''}
                     </div>
                 `;
             }).join('');
