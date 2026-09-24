@@ -3,15 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Poker Cash Game & Realtime Table</title>
+    <title>Poker Cash Game & Cloud Presets</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Firebase SDK (Modular v10) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, get, update } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+        import { getDatabase, ref, set, onValue, get, update, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-        // Firebase Configuration injected successfully
         const firebaseConfig = {
             apiKey: "AIzaSyAJ2kdePQC8hOY4ONHelwCiWrRJIv6kXwQ",
             authDomain: "pk-for-pd.firebaseapp.com",
@@ -26,13 +25,13 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // Expose Firebase functions to global scope
         window.FB_db = db;
         window.FB_ref = ref;
         window.FB_set = set;
         window.FB_onValue = onValue;
         window.FB_get = get;
         window.FB_update = update;
+        window.FB_remove = remove;
     </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
@@ -54,8 +53,8 @@
         <!-- Header -->
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
             <div>
-                <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Realtime Table</h1>
-                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Casino Layout, Firebase Cloud Sync & Big Cards</p>
+                <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Cloud Presets</h1>
+                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Casino Layout, Cloud Saved Names & Auto Showdown</p>
             </div>
             <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
                 Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
@@ -83,18 +82,32 @@
                         </div>
                     </div>
                     <div>
-                        <label class="block text-xs text-slate-400 mb-1">Add Player Names (Up to 10 players)</label>
+                        <label class="block text-xs text-slate-400 mb-1">Add New Player Name (Saved to Cloud)</label>
                         <div class="flex gap-2">
                             <input type="text" id="setup-player-name" placeholder="Enter player name..." class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400">
-                            <button onclick="addPresetPlayer()" class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition">Add</button>
+                            <button onclick="addNewPlayerPreset()" class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition">Save & Add</button>
                         </div>
                     </div>
+
+                    <!-- Cloud Saved Player Tiles Selector -->
                     <div>
-                        <span class="text-xs text-slate-400">Players in queue:</span>
-                        <div id="preset-players-list" class="flex flex-wrap gap-2 mt-2 min-h-[40px] p-2 bg-slate-800 rounded-lg border border-slate-700">
-                            <span class="text-xs text-slate-500 italic">No players added yet</span>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-slate-400">Select players for this table (Cloud Saved):</span>
+                            <button onclick="clearAllPresets()" class="text-[10px] text-rose-400 hover:underline">Clear Cloud List</button>
+                        </div>
+                        <div id="saved-presets-tiles" class="flex flex-wrap gap-2 mt-1 min-h-[50px] p-2 bg-slate-800 rounded-lg border border-slate-700 items-center">
+                            <span class="text-xs text-slate-500 italic">Loading cloud presets...</span>
                         </div>
                     </div>
+
+                    <!-- Selected Queue List -->
+                    <div>
+                        <span class="text-xs text-slate-400">Players in current room queue:</span>
+                        <div id="preset-players-list" class="flex flex-wrap gap-2 mt-1 min-h-[40px] p-2 bg-slate-800/80 rounded-lg border border-slate-700">
+                            <span class="text-xs text-slate-500 italic">Select players above</span>
+                        </div>
+                    </div>
+
                     <button onclick="createRoom()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition shadow-lg">🚀 Launch Poker Table</button>
                 </div>
 
@@ -171,14 +184,15 @@
                         Waiting for action...
                     </div>
 
-                    <!-- Community Cards (Bigger Size) -->
+                    <!-- Community Cards -->
                     <div id="community-cards" class="flex gap-2.5 min-h-[60px] items-center">
                         <span class="text-xs text-emerald-400/60 italic">(Waiting for deal)</span>
                     </div>
 
                     <!-- Host Controls -->
                     <div id="dealer-controls" class="hidden flex flex-wrap justify-center gap-1.5 pt-1">
-                        <button onclick="startNewHand()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-md shadow">🃏 Deal Hand</button>
+                        <button onclick="startNewHand()" id="start-game-btn" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-md shadow">🚀 Start Game</button>
+                        <button onclick="startNewHand()" id="deal-hand-btn" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-2.5 py-1.5 rounded-md shadow hidden">🃏 Deal Hand</button>
                         <button onclick="openAwardPotModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3 py-1.5 rounded-md shadow">🏆 Award Pot</button>
                     </div>
                 </div>
@@ -188,7 +202,7 @@
                 </div>
             </div>
 
-            <!-- Player's Action Panel (Bigger Cards in Hand) -->
+            <!-- Player's Action Panel -->
             <div class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 flex flex-col md:flex-row items-center justify-between gap-3">
                 <div class="flex items-center gap-4">
                     <div>
@@ -236,7 +250,7 @@
 
                 <div class="flex gap-3 pt-2">
                     <button onclick="closeTableModalCancel()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-medium py-2.5 rounded-xl transition">Cancel</button>
-                    <button onclick="confirmFinalizeGame()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 rounded-xl transition shadow-lg">Confirm & Summarize</button>
+                    <button onclick="confirmFinalizeGame()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition shadow-lg">Confirm & Summarize</button>
                 </div>
             </div>
         </div>
@@ -294,10 +308,14 @@
             players: {}
         };
 
-        let tempPresetList = [];
+        let savedPresets = [];
+        let selectedRoomPlayers = [];
         let unsubscribeFirebase = null;
+        let unsubscribePresets = null;
 
         window.addEventListener('DOMContentLoaded', () => {
+            startPresetsCloudSync();
+            
             const urlParams = new URLSearchParams(window.location.search);
             const roomParam = urlParams.get('room');
             if(roomParam) {
@@ -307,40 +325,101 @@
             }
         });
 
-        function addPresetPlayer() {
+        function startPresetsCloudSync() {
+            const presetsRef = window.FB_ref(window.FB_db, 'poker_presets');
+            unsubscribePresets = window.FB_onValue(presetsRef, (snapshot) => {
+                if(snapshot.exists()) {
+                    savedPresets = snapshot.val();
+                    if(!Array.isArray(savedPresets)) {
+                        savedPresets = Object.values(savedPresets);
+                    }
+                } else {
+                    savedPresets = [];
+                }
+                renderSavedPresetsTiles();
+            });
+        }
+
+        async function savePresetsToCloud() {
+            const presetsRef = window.FB_ref(window.FB_db, 'poker_presets');
+            await window.FB_set(presetsRef, savedPresets);
+        }
+
+        async function addNewPlayerPreset() {
             const input = document.getElementById('setup-player-name');
             const name = input.value.trim();
             if(!name) return;
-            if(tempPresetList.length >= 10) {
-                alert('Maximum 10 players allowed per table.');
+            if(savedPresets.includes(name)) {
+                alert('This player name is already saved in cloud.');
+                input.value = '';
                 return;
             }
-            if(tempPresetList.includes(name)) {
-                alert('Player name already exists');
-                return;
-            }
-            tempPresetList.push(name);
+            savedPresets.push(name);
+            await savePresetsToCloud();
             input.value = '';
-            renderPresetList();
         }
 
-        function renderPresetList() {
-            const container = document.getElementById('preset-players-list');
-            if(tempPresetList.length === 0) {
-                container.innerHTML = `<span class="text-xs text-slate-500 italic">No players added yet</span>`;
+        async function clearAllPresets() {
+            if(confirm('Are you sure you want to clear all cloud-saved player names?')) {
+                savedPresets = [];
+                selectedRoomPlayers = [];
+                const presetsRef = window.FB_ref(window.FB_db, 'poker_presets');
+                await window.FB_remove(presetsRef);
+                renderQueueList();
+            }
+        }
+
+        function toggleSelectPreset(name) {
+            const idx = selectedRoomPlayers.indexOf(name);
+            if(idx > -1) {
+                selectedRoomPlayers.splice(idx, 1);
+            } else {
+                if(selectedRoomPlayers.length >= 10) {
+                    alert('Maximum 10 players allowed per table.');
+                    return;
+                }
+                selectedRoomPlayers.push(name);
+            }
+            renderSavedPresetsTiles();
+            renderQueueList();
+        }
+
+        async function deletePresetItem(name, event) {
+            event.stopPropagation();
+            savedPresets = savedPresets.filter(p => p !== name);
+            selectedRoomPlayers = selectedRoomPlayers.filter(p => p !== name);
+            await savePresetsToCloud();
+            renderQueueList();
+        }
+
+        function renderSavedPresetsTiles() {
+            const container = document.getElementById('saved-presets-tiles');
+            if(savedPresets.length === 0) {
+                container.innerHTML = `<span class="text-xs text-slate-500 italic">No saved players in cloud yet. Type above to save.</span>`;
                 return;
             }
-            container.innerHTML = tempPresetList.map((name, index) => `
-                <span class="bg-slate-700 text-amber-300 text-xs px-3 py-1 rounded-full flex items-center gap-2">
-                    ${name}
-                    <button onclick="removePreset(${index})" class="text-rose-400 hover:text-rose-300 font-bold">×</button>
+            container.innerHTML = savedPresets.map(name => {
+                const isSelected = selectedRoomPlayers.includes(name);
+                return `
+                    <div onclick="toggleSelectPreset('${name}')" class="cursor-pointer px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-2 border ${isSelected ? 'bg-amber-600 border-amber-400 text-white shadow-md' : 'bg-slate-700/80 border-slate-600 text-slate-300 hover:bg-slate-700'}">
+                        <span>${name}</span>
+                        <span onclick="deletePresetItem('${name}', event)" class="text-rose-400 hover:text-rose-200 font-bold ml-1">×</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderQueueList() {
+            const container = document.getElementById('preset-players-list');
+            if(selectedRoomPlayers.length === 0) {
+                container.innerHTML = `<span class="text-xs text-slate-500 italic">Click on cloud player tiles above to add them to table</span>`;
+                return;
+            }
+            container.innerHTML = selectedRoomPlayers.map(name => `
+                <span class="bg-emerald-900/60 border border-emerald-500/50 text-emerald-300 text-xs px-3 py-1 rounded-full flex items-center gap-2">
+                    ✓ ${name}
                 </span>
             `).join('');
-        }
-
-        function removePreset(index) {
-            tempPresetList.splice(index, 1);
-            renderPresetList();
         }
 
         async function createRoom() {
@@ -348,8 +427,8 @@
             const sbVal = parseInt(document.getElementById('setup-sb').value) || 10;
             const bbVal = parseInt(document.getElementById('setup-bb').value) || 20;
 
-            if(tempPresetList.length === 0) {
-                alert('Please add at least 1 player before launching room');
+            if(selectedRoomPlayers.length === 0) {
+                alert('Please select at least 1 player from tiles before launching room');
                 return;
             }
 
@@ -364,7 +443,7 @@
             gameState.currentBet = 0;
             gameState.stage = 'Waiting to Deal';
             gameState.communityCards = [];
-            gameState.playerOrder = [...tempPresetList];
+            gameState.playerOrder = [...selectedRoomPlayers];
             
             gameState.dealerIndex = Math.floor(Math.random() * gameState.playerOrder.length);
             gameState.sbIndex = (gameState.dealerIndex + 1) % gameState.playerOrder.length;
@@ -372,7 +451,7 @@
             gameState.activeTurnIndex = 0;
             
             gameState.players = {};
-            tempPresetList.forEach(name => {
+            selectedRoomPlayers.forEach(name => {
                 gameState.players[name] = { chips: buyInVal, totalBuyIn: buyInVal, holeCards: [], folded: false, currentBet: 0 };
             });
 
@@ -404,11 +483,16 @@
                 return;
             }
 
+            if(!savedPresets.includes(name)) {
+                savedPresets.push(name);
+                await savePresetsToCloud();
+            }
+
             gameState.playerOrder.push(name);
             gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn, holeCards: [], folded: true, currentBet: 0 };
             input.value = '';
             await saveStateToFirebase();
-            alert(`Player "${name}" added to the table successfully!`);
+            alert(`Player "${name}" added! They will join the next hand.`);
         }
 
         async function loadRoomToJoin() {
@@ -602,6 +686,9 @@
                 }
             });
 
+            document.getElementById('start-game-btn').classList.add('hidden');
+            document.getElementById('deal-hand-btn').classList.remove('hidden');
+
             await saveStateToFirebase();
         }
 
@@ -623,7 +710,7 @@
             } else if(gameState.stage.includes('Turn')) {
                 gameState.stage = 'River';
                 gameState.communityCards.push(deck.pop());
-            } else if(gameState.stage.includes('River')) {
+            } else if(gameState.stage.includes('River') || gameState.stage.includes('Showdown')) {
                 gameState.stage = 'Showdown';
             }
             
@@ -635,7 +722,7 @@
             const activePlayers = gameState.playerOrder.filter(name => gameState.players[name] && !gameState.players[name].folded);
             
             if(activePlayers.length === 1) {
-                gameState.stage = 'Hand Ended';
+                gameState.stage = 'Showdown';
                 await saveStateToFirebase();
                 return;
             }
@@ -643,7 +730,7 @@
             const allMatched = activePlayers.every(name => gameState.players[name].chips === 0 || gameState.players[name].currentBet === gameState.currentBet);
 
             if(allMatched) {
-                if(gameState.stage === 'River' || gameState.stage === 'Showdown') {
+                if(gameState.stage === 'River') {
                     gameState.stage = 'Showdown';
                     await saveStateToFirebase();
                     return;
@@ -693,7 +780,8 @@
             gameState.pot = 0;
             gameState.stage = 'Hand Ended';
             closeAwardPotModal();
-            await saveStateToFirebase();
+            
+            await startNewHand();
         }
 
         async function playerAction(type) {
@@ -763,7 +851,9 @@
             const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex] || 'None';
             const turnIndicator = document.getElementById('center-turn-indicator');
             if(gameState.stage === 'Waiting to Deal' || gameState.stage === 'Hand Ended') {
-                turnIndicator.innerText = `⏳ Waiting for Host to Deal Hand`;
+                turnIndicator.innerText = `⏳ Waiting for Host to Start / Deal Hand`;
+            } else if(gameState.stage === 'Showdown') {
+                turnIndicator.innerText = `🏆 SHOWDOWN! Reveal hands & award pot`;
             } else {
                 turnIndicator.innerText = `👉 CURRENT TURN: ${currentTurnPlayer}`;
             }
@@ -805,6 +895,11 @@
                 const x = 50 + rx * Math.cos(angle);
                 const y = 50 + ry * Math.sin(angle);
 
+                let showdownCardHtml = '';
+                if(gameState.stage === 'Showdown' && p.holeCards && p.holeCards.length > 0 && !p.folded) {
+                    showdownCardHtml = `<div class="text-[10px] text-amber-300 font-bold mt-0.5">Cards: ${p.holeCards.join(' ')}</div>`;
+                }
+
                 return `
                     <div class="absolute pointer-events-auto transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300" style="left: ${x}%; top: ${y}%;">
                         <div class="bg-slate-900/95 border ${isMyTurn ? 'active-turn border-amber-400 ring-2 ring-amber-400/70' : (name === gameState.myPlayerName ? 'border-emerald-500' : 'border-slate-700')} rounded-xl p-2 w-32 flex flex-col items-center shadow-xl">
@@ -814,6 +909,7 @@
                             </div>
                             <div class="text-emerald-400 font-mono font-bold text-xs">${p.chips} ฿</div>
                             <div class="text-[9px] text-slate-400">${p.folded ? '🔴 Folded' : `Bet: ${p.currentBet}`}</div>
+                            ${showdownCardHtml}
                             
                             ${gameState.isHost || name === gameState.myPlayerName ? `
                                 <div class="flex gap-1 mt-1 w-full">
@@ -881,6 +977,7 @@
 
         function showSummaryView() {
             if(unsubscribeFirebase) unsubscribeFirebase();
+            if(unsubscribePresets) unsubscribePresets();
             document.getElementById('view-game').classList.add('hidden');
             document.getElementById('view-summary').classList.remove('hidden');
 
@@ -918,6 +1015,7 @@
 
         function leaveGame() {
             if(unsubscribeFirebase) unsubscribeFirebase();
+            if(unsubscribePresets) unsubscribePresets();
             location.reload();
         }
 
