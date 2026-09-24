@@ -27,7 +27,7 @@
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
             <div>
                 <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Virtual Table</h1>
-                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Casino Layout, Custom Blinds & Auto-Advance Turns</p>
+                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Casino Layout, Custom Blinds & Direct Room Link</p>
             </div>
             <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
                 Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
@@ -37,9 +37,9 @@
         <!-- Main View: Lobby / Setup -->
         <div id="view-lobby" class="space-y-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Host Panel -->
-                <div class="bg-slate-900/50 p-5 rounded-xl border border-slate-700 space-y-4">
-                    <h2 class="text-lg font-semibold text-amber-300">👑 Create Room (Host)</h2>
+                <!-- Host Panel (Visible to Host or when creating) -->
+                <div id="host-setup-panel" class="bg-slate-900/50 p-5 rounded-xl border border-slate-700 space-y-4">
+                    <h2 class="text-lg font-semibold text-amber-300">👑 Create Room (Host Only)</h2>
                     <div class="grid grid-cols-3 gap-2">
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Buy-In (THB)</label>
@@ -67,14 +67,14 @@
                             <span class="text-xs text-slate-500 italic">No players added yet</span>
                         </div>
                     </div>
-                    <button onclick="createRoom()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition shadow-lg">🚀 Launch Poker Table</button>
+                    <button onclick="createRoom()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition shadow-lg">🚀 Launch Poker Table & Share Room</button>
                 </div>
 
-                <!-- Join Panel -->
+                <!-- Join Panel (For Friends / Players) -->
                 <div class="bg-slate-900/50 p-5 rounded-xl border border-slate-700 space-y-4 flex flex-col justify-between">
                     <div>
                         <h2 class="text-lg font-semibold text-emerald-400">🎮 Join Table</h2>
-                        <p class="text-xs text-slate-400 mb-4">Enter room code to select your player identity</p>
+                        <p class="text-xs text-slate-400 mb-4">Enter room code or use invite link to select your player identity</p>
                         <div class="space-y-3">
                             <div>
                                 <label class="block text-xs text-slate-400 mb-1">Room Code</label>
@@ -93,6 +93,15 @@
                             <button onclick="joinGameAsPlayer()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg transition">Enter Table</button>
                         </div>
                     </div>
+
+                    <!-- Share Room Box (Shown after Room is created) -->
+                    <div id="share-room-box" class="hidden bg-slate-800 p-3 rounded-lg border border-emerald-500/50 space-y-2 mt-4">
+                        <span class="text-xs text-emerald-400 font-bold block">🔗 Room Created Successfully!</span>
+                        <div class="flex gap-2">
+                            <input type="text" id="share-link-input" readonly class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 font-mono">
+                            <button onclick="copyRoomShareLink()" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-1 rounded whitespace-nowrap">Copy Link</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -109,6 +118,7 @@
                     <h3 class="text-sm font-bold text-emerald-400 hidden md:block" id="game-status-text">Table Active</h3>
                 </div>
                 <div class="flex items-center gap-2">
+                    <button onclick="copyRoomShareLink()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition flex items-center gap-1">🔗 Share Room</button>
                     <div id="host-blind-controls" class="hidden items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700">
                         <span class="text-[10px] text-slate-400">SB/BB:</span>
                         <input type="number" id="quick-sb" class="w-12 bg-slate-900 border border-slate-600 rounded text-xs px-1 text-white text-center" value="10">
@@ -198,7 +208,7 @@
 
                 <div class="flex gap-3 pt-2">
                     <button onclick="closeTableModalCancel()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-medium py-2.5 rounded-xl transition">Cancel</button>
-                    <button onclick="confirmFinalizeGame()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 rounded-xl transition shadow-lg">Confirm & Summarize</button>
+                    <button onclick="confirmFinalizeGame()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition shadow-lg">Confirm & Summarize</button>
                 </div>
             </div>
         </div>
@@ -257,6 +267,18 @@
         };
 
         let tempPresetList = [];
+
+        // Check if opened via Shared URL (?room=ROOM-XXXX)
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomParam = urlParams.get('room');
+            if(roomParam) {
+                document.getElementById('join-room-code').value = roomParam;
+                // Hide Host setup panel when friends open the invite link
+                document.getElementById('host-setup-panel').classList.add('hidden');
+                loadRoomToJoin();
+            }
+        });
 
         function addPresetPlayer() {
             const input = document.getElementById('setup-player-name');
@@ -317,7 +339,6 @@
             gameState.communityCards = [];
             gameState.playerOrder = [...tempPresetList];
             
-            // Randomize first dealer position
             gameState.dealerIndex = Math.floor(Math.random() * gameState.playerOrder.length);
             gameState.sbIndex = (gameState.dealerIndex + 1) % gameState.playerOrder.length;
             gameState.bbIndex = (gameState.dealerIndex + 2) % gameState.playerOrder.length;
@@ -329,10 +350,24 @@
             });
 
             saveStateToLocalStorage();
-            alert(`Room created successfully! Room Code: ${roomCode}`);
             
+            // Show share room box in lobby
+            const cleanUrl = window.location.origin + window.location.pathname;
+            const shareUrl = `${cleanUrl}?room=${roomCode}`;
+            document.getElementById('share-link-input').value = shareUrl;
+            document.getElementById('share-room-box').classList.remove('hidden');
+
             document.getElementById('join-room-code').value = roomCode;
             loadRoomToJoin();
+            alert(`Room created successfully! Code: ${roomCode}`);
+        }
+
+        function copyRoomShareLink() {
+            const cleanUrl = window.location.origin + window.location.pathname;
+            const shareUrl = `${cleanUrl}?room=${gameState.roomCode}`;
+            navigator.clipboard.writeText(shareUrl).then(() => {
+                alert('Room invite link copied to clipboard! Send this to your friends.');
+            });
         }
 
         function loadRoomToJoin() {
@@ -525,23 +560,22 @@
         function advanceStage() {
             let deck = createFullDeck();
             
-            // Reset player bets for the new round
             gameState.playerOrder.forEach(name => {
                 gameState.players[name].currentBet = 0;
             });
             gameState.currentBet = 0;
             gameState.activeTurnIndex = (gameState.dealerIndex + 1) % gameState.playerOrder.length;
 
-            if(gameState.stage === 'Pre-Flop') {
+            if(gameState.stage.includes('Pre-Flop')) {
                 gameState.stage = 'Flop';
                 gameState.communityCards = [deck.pop(), deck.pop(), deck.pop()];
-            } else if(gameState.stage === 'Flop') {
+            } else if(gameState.stage.includes('Flop')) {
                 gameState.stage = 'Turn';
                 gameState.communityCards.push(deck.pop());
-            } else if(gameState.stage === 'Turn') {
+            } else if(gameState.stage.includes('Turn')) {
                 gameState.stage = 'River';
                 gameState.communityCards.push(deck.pop());
-            } else if(gameState.stage === 'River') {
+            } else if(gameState.stage.includes('River')) {
                 gameState.stage = 'Showdown';
             }
             
@@ -552,7 +586,6 @@
         function checkBettingRoundComplete() {
             const activePlayers = gameState.playerOrder.filter(name => !gameState.players[name].folded);
             
-            // If only 1 player remains, hand ends immediately
             if(activePlayers.length === 1) {
                 gameState.stage = 'Hand Ended';
                 saveStateToLocalStorage();
@@ -560,7 +593,6 @@
                 return;
             }
 
-            // Check if all active players have matched the current bet
             const allMatched = activePlayers.every(name => gameState.players[name].chips === 0 || gameState.players[name].currentBet === gameState.currentBet);
 
             if(allMatched) {
@@ -571,7 +603,6 @@
                     return;
                 }
 
-                // Auto-advance with 3 seconds delay
                 gameState.stage = gameState.stage + ' (Completing...)';
                 saveStateToLocalStorage();
                 renderGameTable();
