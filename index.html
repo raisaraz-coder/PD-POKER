@@ -49,6 +49,12 @@
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center justify-start p-2 md:p-4">
 
+    <!-- In-app Browser Warning Banner -->
+    <div id="inapp-browser-banner" class="hidden w-full max-w-6xl bg-amber-600/90 text-white text-xs px-4 py-2 rounded-xl mb-2 flex justify-between items-center shadow-lg">
+        <span>⚠️ คุณกำลังเปิดผ่านเบราว์เซอร์จำลองของแอปแชท แนะนำให้เปิดผ่าน Safari หรือ Chrome เพื่อความเสถียรสูงสุด</span>
+        <button onclick="openInExternalBrowser()" class="bg-white text-amber-900 font-bold px-3 py-1 rounded-lg text-[11px] shadow">เปิดในเบราว์เซอร์หลัก ↗</button>
+    </div>
+
     <div class="w-full max-w-6xl bg-slate-800 rounded-2xl shadow-2xl p-4 md:p-6 border border-slate-700 mt-2">
         <!-- Header -->
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
@@ -82,27 +88,30 @@
                         </div>
                     </div>
                     <div>
-                        <label class="block text-xs text-slate-400 mb-1">Add New Player Name (Saved permanently to Cloud)</label>
+                        <label class="block text-xs text-slate-400 mb-1">Add New Player Name (Cloud Save Scope)</label>
                         <div class="flex gap-2">
                             <input type="text" id="setup-player-name" placeholder="Enter player name..." class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400">
                             <button onclick="addNewPlayerPreset()" class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition">Save & Add</button>
                         </div>
                     </div>
 
-                    <!-- Cloud Saved Player Tiles Selector -->
+                    <!-- Cloud Saved Player Tiles Selector + Add All Button -->
                     <div>
                         <div class="flex justify-between items-center mb-1">
-                            <span class="text-xs text-slate-400">Select players for this table (from Cloud Save):</span>
-                            <button onclick="clearAllPresets()" class="text-[10px] text-rose-400 hover:underline">Clear Cloud List</button>
+                            <span class="text-xs text-slate-400">Select players scope for this room:</span>
+                            <div class="flex gap-2">
+                                <button onclick="addAllPresets()" class="text-[10px] bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-0.5 rounded font-bold">✨ Add All</button>
+                                <button onclick="clearAllPresets()" class="text-[10px] text-rose-400 hover:underline">Clear Cloud List</button>
+                            </div>
                         </div>
                         <div id="saved-presets-tiles" class="flex flex-wrap gap-2 mt-1 min-h-[50px] p-2 bg-slate-800 rounded-lg border border-slate-700 items-center">
                             <span class="text-xs text-slate-500 italic">Loading cloud presets...</span>
                         </div>
                     </div>
 
-                    <!-- Selected Queue List -->
+                    <!-- Selected Scope List -->
                     <div>
-                        <span class="text-xs text-slate-400">Players in current room queue:</span>
+                        <span class="text-xs text-slate-400">Potential players scope (Ready for room):</span>
                         <div id="preset-players-list" class="flex flex-wrap gap-2 mt-1 min-h-[40px] p-2 bg-slate-800/80 rounded-lg border border-slate-700">
                             <span class="text-xs text-slate-500 italic">Select players above</span>
                         </div>
@@ -124,10 +133,10 @@
                             <button onclick="loadRoomToJoin()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 rounded-lg transition">Step 2: Find Room & Load Players</button>
                         </div>
                         
-                        <!-- Join Selection Area (Appears after room is loaded) -->
+                        <!-- Join Selection Area -->
                         <div id="join-selection-area" class="mt-4 hidden space-y-3 bg-slate-800/80 p-3 rounded-xl border border-slate-700">
                             <div>
-                                <label class="block text-xs text-slate-400 mb-1">Step 3: Select your name (Available slots):</label>
+                                <label class="block text-xs text-slate-400 mb-1">Step 3: Select your name to sit at table:</label>
                                 <select id="join-name-select" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-400">
                                 </select>
                             </div>
@@ -135,7 +144,7 @@
                                 <input type="checkbox" id="join-as-host-check" class="w-4 h-4 rounded bg-slate-800 border-slate-600 text-emerald-500 focus:ring-emerald-400">
                                 <label for="join-as-host-check" class="text-xs text-amber-300 font-medium">I am the Host (Table Controller)</label>
                             </div>
-                            <button onclick="joinGameAsPlayer()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-lg transition shadow-md">🚀 Enter Table</button>
+                            <button onclick="joinGameAsPlayer()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-lg transition shadow-md">🚀 Take Seat & Play</button>
                         </div>
                     </div>
                 </div>
@@ -153,7 +162,11 @@
                     </div>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
+                    <!-- Sit Out / Sit In Toggle Button -->
+                    <button id="sit-out-btn" onclick="toggleSitOutStatus()" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition">🛌 Sit Out</button>
+
                     <button onclick="copyRoomShareLink()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition flex items-center gap-1">🔗 Share Link</button>
+                    
                     <!-- Host Add Player Mid-Game Button -->
                     <div id="host-add-player-box" class="hidden items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700">
                         <input type="text" id="midgame-new-player" placeholder="New player name" class="w-28 bg-slate-900 border border-slate-600 rounded text-xs px-2 py-1 text-white">
@@ -183,7 +196,7 @@
                         <span>BET: <strong id="table-current-bet" class="text-white">0</strong> THB</span>
                     </div>
 
-                    <!-- Turn Indicator Banner (Center) -->
+                    <!-- Turn Indicator Banner -->
                     <div id="center-turn-indicator" class="bg-amber-500/20 border border-amber-400/80 text-amber-300 font-bold px-4 py-1 rounded-full text-xs animate-pulse">
                         Waiting for action...
                     </div>
@@ -296,11 +309,12 @@
         };
 
         let savedPresets = [];
-        let selectedRoomPlayers = [];
+        let selectedRoomPresetsScope = [];
         let unsubscribeFirebase = null;
         let unsubscribePresets = null;
 
         window.addEventListener('DOMContentLoaded', () => {
+            detectInAppBrowser();
             startPresetsCloudSync();
             
             const urlParams = new URLSearchParams(window.location.search);
@@ -309,7 +323,32 @@
                 document.getElementById('join-room-code').value = roomParam;
                 loadRoomToJoin();
             }
+
+            // ตรวจสอบสถานะการออกหน้าจอ (Visibility API) เพื่อทำ Auto Sit-Out เมื่อสลับแอป
+            document.addEventListener("visibilitychange", () => {
+                if (document.visibilityState === "hidden" && gameState.myPlayerName && gameState.roomCode) {
+                    // เมื่อสลับออกไปแอปอื่น ให้บันทึกสถานะ Sit Out อัตโนมัติเพื่อเซฟเกม
+                    setSitOutStatus(true);
+                }
+            });
         });
+
+        // ตรวจสอบว่าเป็น In-app Browser ของแอปแชทหรือไม่
+        function detectInAppBrowser() {
+            const ua = navigator.userAgent || navigator.vendor || window.opera;
+            const isMessenger = (/FBAN|FBAV/i).test(ua);
+            const isLine = (/Line/i).test(ua);
+            if (isMessenger || isLine) {
+                document.getElementById('inapp-browser-banner').classList.remove('hidden');
+            }
+        }
+
+        // ฟังก์ชันช่วยพยายามเปิดลิงก์ออกนอกแอปแชท
+        function openInExternalBrowser() {
+            const currentUrl = window.location.href;
+            // บน iOS และ Android บังคับเปิดผ่าน window.open หรือพยายามเบี่ยงเบนออกภายนอก
+            window.location.href = currentUrl;
+        }
 
         function startPresetsCloudSync() {
             const presetsRef = window.FB_ref(window.FB_db, 'poker_presets');
@@ -348,7 +387,7 @@
         async function clearAllPresets() {
             if(confirm('Are you sure you want to clear all cloud-saved player names?')) {
                 savedPresets = [];
-                selectedRoomPlayers = [];
+                selectedRoomPresetsScope = [];
                 const presetsRef = window.FB_ref(window.FB_db, 'poker_presets');
                 await window.FB_remove(presetsRef);
                 renderQueueList();
@@ -356,16 +395,23 @@
         }
 
         function toggleSelectPreset(name) {
-            const idx = selectedRoomPlayers.indexOf(name);
+            const idx = selectedRoomPresetsScope.indexOf(name);
             if(idx > -1) {
-                selectedRoomPlayers.splice(idx, 1);
+                selectedRoomPresetsScope.splice(idx, 1);
             } else {
-                if(selectedRoomPlayers.length >= 10) {
-                    alert('Maximum 10 players allowed per table.');
+                if(selectedRoomPresetsScope.length >= 10) {
+                    alert('Maximum 10 players allowed per table scope.');
                     return;
                 }
-                selectedRoomPlayers.push(name);
+                selectedRoomPresetsScope.push(name);
             }
+            renderSavedPresetsTiles();
+            renderQueueList();
+        }
+
+        // เพิ่มฟังก์ชัน Add All ดึงรายชื่อจาก Cloud Save ทั้งหมดมาทำ Scope ทันที
+        function addAllPresets() {
+            selectedRoomPresetsScope = [...savedPresets];
             renderSavedPresetsTiles();
             renderQueueList();
         }
@@ -373,7 +419,7 @@
         async function deletePresetItem(name, event) {
             event.stopPropagation();
             savedPresets = savedPresets.filter(p => p !== name);
-            selectedRoomPlayers = selectedRoomPlayers.filter(p => p !== name);
+            selectedRoomPresetsScope = selectedRoomPresetsScope.filter(p => p !== name);
             await savePresetsToCloud();
             renderQueueList();
         }
@@ -385,7 +431,7 @@
                 return;
             }
             container.innerHTML = savedPresets.map(name => {
-                const isSelected = selectedRoomPlayers.includes(name);
+                const isSelected = selectedRoomPresetsScope.includes(name);
                 return `
                     <div onclick="toggleSelectPreset('${name}')" class="cursor-pointer px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-2 border ${isSelected ? 'bg-amber-600 border-amber-400 text-white shadow-md' : 'bg-slate-700/80 border-slate-600 text-slate-300 hover:bg-slate-700'}">
                         <span>${name}</span>
@@ -397,24 +443,25 @@
 
         function renderQueueList() {
             const container = document.getElementById('preset-players-list');
-            if(selectedRoomPlayers.length === 0) {
-                container.innerHTML = `<span class="text-xs text-slate-500 italic">Click on cloud player tiles above to add them to table</span>`;
+            if(selectedRoomPresetsScope.length === 0) {
+                container.innerHTML = `<span class="text-xs text-slate-500 italic">Click on cloud player tiles above or use 'Add All'</span>`;
                 return;
             }
-            container.innerHTML = selectedRoomPlayers.map(name => `
+            container.innerHTML = selectedRoomPresetsScope.map(name => `
                 <span class="bg-emerald-900/60 border border-emerald-500/50 text-emerald-300 text-xs px-3 py-1 rounded-full flex items-center gap-2">
                     ✓ ${name}
                 </span>
             `).join('');
         }
 
+        // สร้างห้องโดยตารางจริงจะยังไม่ถูกสร้างตัวละคร จนกว่าผู้เล่นจะกด Join เข้ามาเอง
         async function createRoom() {
             const buyInVal = parseInt(document.getElementById('setup-buyin').value) || 300;
             const sbVal = parseInt(document.getElementById('setup-sb').value) || 10;
             const bbVal = parseInt(document.getElementById('setup-bb').value) || 20;
 
-            if(selectedRoomPlayers.length === 0) {
-                alert('Please select at least 1 player from tiles before launching room');
+            if(selectedRoomPresetsScope.length === 0) {
+                alert('Please select at least 1 player scope before launching room');
                 return;
             }
 
@@ -429,17 +476,11 @@
             gameState.currentBet = 0;
             gameState.stage = 'Waiting to Deal';
             gameState.communityCards = [];
-            gameState.playerOrder = [...selectedRoomPlayers];
             
-            gameState.dealerIndex = Math.floor(Math.random() * gameState.playerOrder.length);
-            gameState.sbIndex = (gameState.dealerIndex + 1) % gameState.playerOrder.length;
-            gameState.bbIndex = (gameState.dealerIndex + 2) % gameState.playerOrder.length;
-            gameState.activeTurnIndex = 0;
-            
+            // เก็บรายชื่อ scope ที่ Host เตรียมไว้ทั้งหมด
+            gameState.potentialScope = [...selectedRoomPresetsScope];
+            gameState.playerOrder = []; // ยังไม่มีใครนั่งจนกว่าจะกด Join
             gameState.players = {};
-            selectedRoomPlayers.forEach(name => {
-                gameState.players[name] = { chips: buyInVal, totalBuyIn: buyInVal, holeCards: [], folded: false, currentBet: 0 };
-            });
 
             await saveStateToFirebase();
             document.getElementById('join-room-code').value = roomCode;
@@ -465,7 +506,7 @@
                 return;
             }
             if(gameState.playerOrder.includes(name)) {
-                alert('Player name already exists on table.');
+                alert('Player already seated.');
                 return;
             }
 
@@ -475,10 +516,10 @@
             }
 
             gameState.playerOrder.push(name);
-            gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn, holeCards: [], folded: true, currentBet: 0 };
+            gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false };
             input.value = '';
             await saveStateToFirebase();
-            alert(`Player "${name}" added! They will join the next hand.`);
+            alert(`Player "${name}" added to table!`);
         }
 
         async function loadRoomToJoin() {
@@ -501,60 +542,30 @@
             gameState.buyIn = data.buyIn;
             gameState.smallBlind = data.smallBlind || 10;
             gameState.bigBlind = data.bigBlind || 20;
+            gameState.potentialScope = data.potentialScope || [];
+            gameState.playerOrder = data.playerOrder || [];
             gameState.players = data.players || {};
-            gameState.isClosed = data.isClosed;
-            gameState.pot = data.pot || 0;
-            gameState.currentBet = data.currentBet || 0;
-            gameState.stage = data.stage || 'Waiting to Deal';
-            gameState.communityCards = data.communityCards || [];
-            gameState.playerOrder = data.playerOrder || Object.keys(data.players);
-            gameState.dealerIndex = data.dealerIndex || 0;
-            gameState.sbIndex = data.sbIndex || 0;
-            gameState.bbIndex = data.bbIndex || 0;
-            gameState.activeTurnIndex = data.activeTurnIndex || 0;
 
-            // กรองเฉพาะชื่อที่ยังไม่มีคนเลือกเข้าโต๊ะไปแล้ว (เช็คจากว่าชื่อนั้นถูกกด Enter Table หรือยัง หรือคอยดูสถานะรายชื่อใน room)
-            // โดยดูว่าชื่อไหนมีอยู่ใน gameState.players แล้วบ้าง หากมีแล้วจะไม่แสดงใน Dropdown เพื่อไม่ให้เลือกซ้ำ
-            const availablePlayers = gameState.playerOrder.filter(name => {
-                // ถ้ามีชื่อนี้อยู่ในห้องแล้ว แต่ยังไม่ได้เข้าเล่น (หรือให้แสดงเฉพาะชื่อที่ยังไม่ถูกกดเลือก)
-                // เพื่อให้เห็นภาพชัดเจน เรากรองชื่อที่ถูกกดเข้าเล่นไปแล้วออก หรือเช็คสถานะการเข้าเล่น
-                return true; 
-            });
+            // ให้ผู้เล่นเลือกชื่อจากรายชื่อ Scope ที่ Host กำหนดไว้ โดยกรองชื่อคนที่นั่งโต๊ะไปแล้วออก
+            const availableNames = gameState.potentialScope.filter(name => !gameState.playerOrder.includes(name));
 
-            updateJoinDropdownOptions();
+            const select = document.getElementById('join-name-select');
+            if(availableNames.length === 0) {
+                select.innerHTML = `<option value="">-- All scope slots are taken --</option>`;
+            } else {
+                select.innerHTML = availableNames.map(name => `<option value="${name}">${name}</option>`).join('');
+            }
             
             document.getElementById('join-selection-area').classList.remove('hidden');
-            alert('Room found! Please select your name below to enter.');
+            alert('Room found! Please select your name from scope to take a seat.');
         }
 
-        // ฟังก์ชันอัปเดต Dropdown ฝั่ง Join โดยซ่อนชื่อที่มีคนกดเลือกเข้าเล่นไปแล้ว
-        function updateJoinDropdownOptions() {
-            const select = document.getElementById('join-name-select');
-            
-            // เช็คว่ามีใครถูกเลือกไปแล้วบ้าง โดยดูจากข้อมูลในฐานข้อมูลปัจจุบัน
-            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-            window.FB_get(roomRef).then(snapshot => {
-                if(snapshot.exists()) {
-                    const data = snapshot.val();
-                    const playersData = data.players || {};
-                    const activeJoinedNames = data.joinedNames || []; // รายชื่อคนที่กดเลือกเข้าห้องไปแล้ว
-
-                    const availableNames = gameState.playerOrder.filter(name => !activeJoinedNames.includes(name));
-
-                    if(availableNames.length === 0) {
-                        select.innerHTML = `<option value="">-- All player slots are taken --</option>`;
-                    } else {
-                        select.innerHTML = availableNames.map(name => `<option value="${name}">${name}</option>`).join('');
-                    }
-                }
-            });
-        }
-
+        // ผู้เล่นกดเข้าโต๊ะด้วยชื่อตัวเอง
         async function joinGameAsPlayer() {
             const select = document.getElementById('join-name-select');
             const name = select.value;
             if(!name) {
-                alert('Please select your valid name.');
+                alert('Please select your name.');
                 return;
             }
 
@@ -564,16 +575,27 @@
                 gameState.isHost = true;
             }
 
-            // บันทึกว่าชื่อนี้ถูกเลือกเข้าเล่นห้องนี้แล้ว เพื่อป้องกันคนอื่นเลือกชื่อซ้ำ
+            // บันทึกเพิ่มเข้า playerOrder และกำหนดข้อมูลชิปเริ่มต้น
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
             const snapshot = await window.FB_get(roomRef);
             if(snapshot.exists()) {
                 let data = snapshot.val();
-                if(!data.joinedNames) data.joinedNames = [];
-                if(!data.joinedNames.includes(name)) {
-                    data.joinedNames.push(name);
-                    await window.FB_set(roomRef, data);
+                if(!data.playerOrder) data.playerOrder = [];
+                if(!data.playerOrder.includes(name)) {
+                    data.playerOrder.push(name);
                 }
+                if(!data.players) data.players = {};
+                if(!data.players[name]) {
+                    data.players[name] = { 
+                        chips: data.buyIn, 
+                        totalBuyIn: data.buyIn, 
+                        holeCards: [], 
+                        folded: true, 
+                        currentBet: 0, 
+                        sitOut: false 
+                    };
+                }
+                await window.FB_set(roomRef, data);
             }
 
             enterGameView();
@@ -625,13 +647,17 @@
                     gameState.currentBet = data.currentBet || 0;
                     gameState.stage = data.stage || 'Waiting to Deal';
                     gameState.communityCards = data.communityCards || [];
-                    gameState.playerOrder = data.playerOrder || Object.keys(data.players);
+                    gameState.playerOrder = data.playerOrder || [];
+                    gameState.potentialScope = data.potentialScope || [];
                     gameState.dealerIndex = data.dealerIndex || 0;
                     gameState.sbIndex = data.sbIndex || 0;
                     gameState.bbIndex = data.bbIndex || 0;
                     gameState.activeTurnIndex = data.activeTurnIndex || 0;
                     gameState.smallBlind = data.smallBlind || 10;
                     gameState.bigBlind = data.bigBlind || 20;
+
+                    // อัปเดต UI ปุ่ม Sit Out ตามสถานะปัจจุบันของตัวเอง
+                    updateSitOutButtonUI();
 
                     if(gameState.isClosed) {
                         showSummaryView();
@@ -643,13 +669,6 @@
         }
 
         async function saveStateToFirebase() {
-            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-            const snapshot = await window.FB_get(roomRef);
-            let existingJoinedNames = [];
-            if(snapshot.exists() && snapshot.val().joinedNames) {
-                existingJoinedNames = snapshot.val().joinedNames;
-            }
-
             const data = {
                 buyIn: gameState.buyIn,
                 smallBlind: gameState.smallBlind,
@@ -659,15 +678,50 @@
                 currentBet: gameState.currentBet,
                 stage: gameState.stage,
                 communityCards: gameState.communityCards,
+                potentialScope: gameState.potentialScope,
                 playerOrder: gameState.playerOrder,
                 dealerIndex: gameState.dealerIndex,
                 sbIndex: gameState.sbIndex,
                 bbIndex: gameState.bbIndex,
                 activeTurnIndex: gameState.activeTurnIndex,
-                players: gameState.players,
-                joinedNames: existingJoinedNames
+                players: gameState.players
             };
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
             await window.FB_set(roomRef, data);
+        }
+
+        // ฟังก์ชันสลับสถานะ Sit Out / Sit In ด้วยตนเอง หรือเมื่อสลับแอป
+        async function toggleSitOutStatus() {
+            const me = gameState.myPlayerName;
+            if(!me || !gameState.players[me]) return;
+            const currentSitOut = gameState.players[me].sitOut || false;
+            await setSitOutStatus(!currentSitOut);
+        }
+
+        async function setSitOutStatus(status) {
+            const me = gameState.myPlayerName;
+            if(!me || !gameState.players[me]) return;
+            if(gameState.players[me].sitOut === status) return;
+
+            gameState.players[me].sitOut = status;
+            if(status) {
+                gameState.players[me].folded = true; // ถ้านั่งพัก ให้หมอบอัตโนมัติในตานั้นทันที
+            }
+            await saveStateToFirebase();
+        }
+
+        function updateSitOutButtonUI() {
+            const me = gameState.myPlayerName;
+            if(!me || !gameState.players[me]) return;
+            const isSitOut = gameState.players[me].sitOut || false;
+            const btn = document.getElementById('sit-out-btn');
+            if(isSitOut) {
+                btn.innerText = "🟢 Sit In (Join Back)";
+                btn.className = "bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition";
+            } else {
+                btn.innerText = "🛌 Sit Out";
+                btn.className = "bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition";
+            }
         }
 
         async function updateBlinds() {
@@ -699,6 +753,10 @@
 
         async function startNewHand() {
             if(!gameState.isHost) return;
+            if(!gameState.playerOrder || gameState.playerOrder.length === 0) {
+                alert("No players seated yet!");
+                return;
+            }
             
             const numPlayers = gameState.playerOrder.length;
             gameState.dealerIndex = (gameState.dealerIndex + 1) % numPlayers;
@@ -713,24 +771,31 @@
             gameState.communityCards = [];
 
             gameState.playerOrder.forEach((name, idx) => {
-                if(!gameState.players[name]) {
-                    gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn };
-                }
-                gameState.players[name].holeCards = [deck.pop(), deck.pop()];
-                gameState.players[name].folded = false;
-                gameState.players[name].currentBet = 0;
-                delete gameState.players[name].resultText;
-                
-                if(idx === gameState.sbIndex) {
-                    let sbAmt = Math.min(gameState.smallBlind, gameState.players[name].chips);
-                    gameState.players[name].chips -= sbAmt;
-                    gameState.players[name].currentBet = sbAmt;
-                    gameState.pot += sbAmt;
-                } else if(idx === gameState.bbIndex) {
-                    let bbAmt = Math.min(gameState.bigBlind, gameState.players[name].chips);
-                    gameState.players[name].chips -= bbAmt;
-                    gameState.players[name].currentBet = bbAmt;
-                    gameState.pot += bbAmt;
+                if(gameState.players[name]) {
+                    // หากผู้เล่นคนนั้น Sit Out อยู่ จะไม่แจกไพ่และถือว่าหมอบตลอด
+                    const isSitOut = gameState.players[name].sitOut || false;
+                    if(isSitOut) {
+                        gameState.players[name].holeCards = [];
+                        gameState.players[name].folded = true;
+                        gameState.players[name].currentBet = 0;
+                    } else {
+                        gameState.players[name].holeCards = [deck.pop(), deck.pop()];
+                        gameState.players[name].folded = false;
+                        gameState.players[name].currentBet = 0;
+                        delete gameState.players[name].resultText;
+                        
+                        if(idx === gameState.sbIndex) {
+                            let sbAmt = Math.min(gameState.smallBlind, gameState.players[name].chips);
+                            gameState.players[name].chips -= sbAmt;
+                            gameState.players[name].currentBet = sbAmt;
+                            gameState.pot += sbAmt;
+                        } else if(idx === gameState.bbIndex) {
+                            let bbAmt = Math.min(gameState.bigBlind, gameState.players[name].chips);
+                            gameState.players[name].chips -= bbAmt;
+                            gameState.players[name].currentBet = bbAmt;
+                            gameState.pot += bbAmt;
+                        }
+                    }
                 }
             });
 
@@ -765,9 +830,9 @@
 
         async function checkBettingRoundComplete() {
             if(!gameState.isHost) return;
-            const activePlayers = gameState.playerOrder.filter(name => gameState.players[name] && !gameState.players[name].folded);
+            const activePlayers = gameState.playerOrder.filter(name => gameState.players[name] && !gameState.players[name].folded && !gameState.players[name].sitOut);
             
-            if(activePlayers.length === 1) {
+            if(activePlayers.length <= 1) {
                 await evaluateAndTriggerShowdown(activePlayers);
                 return;
             }
@@ -847,22 +912,24 @@
                 return { name, score: res.score, nameDesc: res.name };
             });
 
-            evaluated.sort((a, b) => b.score - a.score);
-            let bestScore = evaluated[0].score;
-            let winners = evaluated.filter(e => e.score === bestScore).map(e => e.name);
+            if(evaluated.length > 0) {
+                evaluated.sort((a, b) => b.score - a.score);
+                let bestScore = evaluated[0].score;
+                let winners = evaluated.filter(e => e.score === bestScore).map(e => e.name);
 
-            const share = Math.floor(gameState.pot / winners.length);
-            winners.forEach(wName => {
-                if(gameState.players[wName]) {
-                    gameState.players[wName].chips += share;
-                }
-            });
+                const share = Math.floor(gameState.pot / winners.length);
+                winners.forEach(wName => {
+                    if(gameState.players[wName]) {
+                        gameState.players[wName].chips += share;
+                    }
+                });
 
-            activePlayers.forEach(name => {
-                let ev = evaluated.find(e => e.name === name);
-                let isWin = winners.includes(name);
-                gameState.players[name].resultText = `${ev.nameDesc} ${isWin ? '👑 (WINNER!)' : ''}`;
-            });
+                activePlayers.forEach(name => {
+                    let ev = evaluated.find(e => e.name === name);
+                    let isWin = winners.includes(name);
+                    if(ev) gameState.players[name].resultText = `${ev.nameDesc} ${isWin ? '👑 (WINNER!)' : ''}`;
+                });
+            }
 
             gameState.pot = 0;
             await saveStateToFirebase();
@@ -875,6 +942,10 @@
         async function playerAction(type) {
             const me = gameState.myPlayerName;
             if(!me || !gameState.players[me]) return;
+            if(gameState.players[me].sitOut) {
+                alert("You are currently Sit Out. Click 'Sit In' to play.");
+                return;
+            }
             
             const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex];
             if(currentTurnPlayer !== me && !gameState.isHost) {
@@ -923,6 +994,10 @@
 
         async function playerAllIn(name) {
             if(!gameState.players[name]) return;
+            if(gameState.players[name].sitOut) {
+                alert("Player is Sit Out.");
+                return;
+            }
             if(gameState.myPlayerName !== name && !gameState.isHost) {
                 alert("You can only perform actions for your own account!");
                 return;
@@ -963,7 +1038,7 @@
                 gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % gameState.playerOrder.length;
                 attempts++;
                 let pName = gameState.playerOrder[gameState.activeTurnIndex];
-                if(gameState.players[pName] && !gameState.players[pName].folded) break;
+                if(gameState.players[pName] && !gameState.players[pName].folded && !gameState.players[pName].sitOut) break;
             } while(attempts < gameState.playerOrder.length);
         }
 
@@ -999,15 +1074,19 @@
                     <div class="bg-amber-100 text-slate-900 font-bold px-3.5 py-2 rounded-lg shadow-md border border-amber-300 text-base md:text-lg">${c}</div>
                 `).join('') + (myData.folded ? `<span class="text-xs text-rose-400 font-bold ml-2 self-center">(Folded)</span>` : '');
             } else {
-                myCardDiv.innerHTML = `<span class="text-xs text-slate-500 italic">No cards dealt</span>`;
+                myCardDiv.innerHTML = `<span class="text-xs text-slate-500 italic">${myData && myData.sitOut ? '🛌 You are Sit Out' : 'No cards dealt'}</span>`;
             }
 
             const seatsContainer = document.getElementById('poker-seats-container');
             const totalPlayers = gameState.playerOrder.length;
+            if(totalPlayers === 0) {
+                seatsContainer.innerHTML = `<div class="absolute inset-0 flex items-center justify-center text-xs text-emerald-300/80 italic">Waiting for players to take seats...</div>`;
+                return;
+            }
 
             seatsContainer.innerHTML = gameState.playerOrder.map((name, idx) => {
-                const p = gameState.players[name] || { chips: 0, totalBuyIn: gameState.buyIn, folded: false, currentBet: 0 };
-                const isMyTurn = (idx === gameState.activeTurnIndex && !gameState.stage.includes('Completing') && gameState.stage !== 'Waiting to Deal' && gameState.stage !== 'Hand Ended' && gameState.stage !== 'Showdown');
+                const p = gameState.players[name] || { chips: 0, totalBuyIn: gameState.buyIn, folded: false, currentBet: 0, sitOut: false };
+                const isMyTurn = (idx === gameState.activeTurnIndex && !p.sitOut && !gameState.stage.includes('Completing') && gameState.stage !== 'Waiting to Deal' && gameState.stage !== 'Hand Ended' && gameState.stage !== 'Showdown');
                 
                 let badges = [];
                 if(idx === gameState.dealerIndex) badges.push(`<span class="bg-blue-600 text-white text-[9px] px-1 py-0.5 rounded font-bold">D</span>`);
@@ -1020,8 +1099,10 @@
                 const x = 50 + rx * Math.cos(angle);
                 const y = 50 + ry * Math.sin(angle);
 
+                let statusBadgeText = p.sitOut ? '🛌 Sit Out' : (p.folded ? '🔴 Folded' : `Bet: ${p.currentBet}`);
+
                 let showdownCardHtml = '';
-                if(gameState.stage === 'Showdown' && p.holeCards && p.holeCards.length > 0 && !p.folded) {
+                if(gameState.stage === 'Showdown' && p.holeCards && p.holeCards.length > 0 && !p.folded && !p.sitOut) {
                     showdownCardHtml = `
                         <div class="text-[10px] text-amber-300 font-bold mt-1 bg-black/50 px-2 py-1 rounded w-full text-center">
                             <div>🃏 ${p.holeCards.join(' ')}</div>
@@ -1040,7 +1121,7 @@
                                 <div class="flex gap-0.5">${badges.join('')}</div>
                             </div>
                             <div class="text-emerald-400 font-mono font-bold text-xs">${p.chips} ฿</div>
-                            <div class="text-[9px] text-slate-400">${p.folded ? '🔴 Folded' : `Bet: ${p.currentBet}`}</div>
+                            <div class="text-[9px] text-slate-400">${statusBadgeText}</div>
                             ${showdownCardHtml}
                             
                             <div class="flex gap-1 mt-1.5 w-full">
