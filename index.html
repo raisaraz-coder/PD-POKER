@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poker Cash Game & Virtual Table</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Prompt', sans-serif; }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 15px rgba(245, 158, 11, 0.6); border-color: rgb(245, 158, 11); }
+            50% { box-shadow: 0 0 5px rgba(245, 158, 11, 0.2); border-color: rgb(217, 119, 6); }
+        .active-turn {
+            animation: pulse-glow 1.5s infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center justify-start p-2 md:p-4">
+
+    <div class="w-full max-w-5xl bg-slate-800 rounded-2xl shadow-2xl p-4 md:p-6 border border-slate-700 mt-2">
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
+            <div>
+                <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Virtual Table</h1>
+                <p class="text-xs md:text-sm text-slate-400">Full 52-Card Deck, Blinds Rotation, Turn Glow & Cash Game Ledger</p>
+            </div>
+            <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
+                Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
+            </div>
+        </div>
+
+        <!-- Main View: Lobby / Setup -->
+        <div id="view-lobby" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Host Panel -->
+                <div class="bg-slate-900/50 p-5 rounded-xl border border-slate-700 space-y-4">
+                    <h2 class="text-lg font-semibold text-amber-300">👑 Create Room (Host)</h2>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Buy-In per player (THB)</label>
+                        <input type="number" id="setup-buyin" value="300" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-400">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Add Player Names (Include yourself if playing)</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="setup-player-name" placeholder="Enter name..." class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-400">
+                            <button onclick="addPresetPlayer()" class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-medium transition">Add</button>
+                        </div>
+                    </div>
+                    <div>
+                        <span class="text-xs text-slate-400">Players in queue:</span>
+                        <div id="preset-players-list" class="flex flex-wrap gap-2 mt-2 min-h-[40px] p-2 bg-slate-800 rounded-lg border border-slate-700">
+                            <span class="text-xs text-slate-500 italic">No players added yet</span>
+                        </div>
+                    </div>
+                    <button onclick="createRoom()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition shadow-lg">🚀 Launch Poker Table</button>
+                </div>
+
+                <!-- Join Panel -->
+                <div class="bg-slate-900/50 p-5 rounded-xl border border-slate-700 space-y-4 flex flex-col justify-between">
+                    <div>
+                        <h2 class="text-lg font-semibold text-emerald-400">🎮 Join Table</h2>
+                        <p class="text-xs text-slate-400 mb-4">Enter room code to select your player identity</p>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Room Code</label>
+                                <input type="text" id="join-room-code" placeholder="e.g. ROOM-XXXX" class="w-full uppercase bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-400 font-mono">
+                            </div>
+                            <button onclick="loadRoomToJoin()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 rounded-lg transition">Find Room</button>
+                        </div>
+                        <div id="join-selection-area" class="mt-4 hidden space-y-3">
+                            <label class="block text-xs text-slate-400">Select your name:</label>
+                            <select id="join-name-select" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-400">
+                            </select>
+                            <div class="flex items-center gap-2 pt-1">
+                                <input type="checkbox" id="join-as-host-check" class="w-4 h-4 rounded bg-slate-800 border-slate-600 text-emerald-500 focus:ring-emerald-400">
+                                <label for="join-as-host-check" class="text-xs text-amber-300 font-medium">I am the Host (Table Controller)</label>
+                            </div>
+                            <button onclick="joinGameAsPlayer()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg transition">Enter Table</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main View: Game Table & Active Management -->
+        <div id="view-game" class="hidden space-y-4">
+            <!-- Top Controls bar -->
+            <div class="flex flex-wrap justify-between items-center bg-slate-900/60 p-3 rounded-xl border border-slate-700 gap-2">
+                <div>
+                    <span class="text-xs text-slate-400">Buy-In: <strong id="display-buyin" class="text-amber-400">300</strong> THB | Blinds: <span class="text-white font-mono">10/20</span></span>
+                    <h3 class="text-sm md:text-base font-bold text-white" id="game-status-text">Table Active</h3>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="openCloseTableModal()" id="host-close-btn" class="hidden bg-rose-600 hover:bg-rose-500 text-white text-xs md:text-sm font-bold px-3 py-2 rounded-lg transition">🛑 Close Table & Summary</button>
+                    <button onclick="leaveGame()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs md:text-sm px-3 py-2 rounded-lg transition">Leave</button>
+                </div>
+            </div>
+
+            <!-- Virtual Poker Table Area -->
+            <div class="bg-emerald-900/40 border-4 border-emerald-700/60 rounded-3xl p-5 relative flex flex-col items-center justify-between min-h-[300px] shadow-inner">
+                <div class="flex justify-between w-full text-xs text-emerald-300/80 font-mono">
+                    <span>Stage: <strong id="table-stage" class="text-white">Waiting to Deal</strong></span>
+                    <span>POT: <strong id="table-pot" class="text-amber-400 text-base">0</strong> THB</span>
+                    <span>Current Bet: <strong id="table-current-bet" class="text-white">0</strong> THB</span>
+                </div>
+
+                <!-- Community Cards Center -->
+                <div class="my-4 flex flex-col items-center space-y-2">
+                    <span class="text-xs text-emerald-200 uppercase tracking-widest">Community Cards</span>
+                    <div id="community-cards" class="flex gap-2 min-h-[50px] items-center">
+                        <span class="text-xs text-emerald-400/60 italic">(Waiting for deal)</span>
+                    </div>
+                </div>
+
+                <!-- Host / Dealer Actions -->
+                <div id="dealer-controls" class="hidden flex flex-wrap justify-center gap-2 my-2">
+                    <button onclick="startNewHand()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-2 rounded-lg shadow">🃏 Deal New Hand</button>
+                    <button onclick="nextPokerStage()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3 py-2 rounded-lg shadow">➡️ Next Stage (Flop/Turn/River)</button>
+                    <button onclick="openAwardPotModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3 py-2 rounded-lg shadow">🏆 Award Pot</button>
+                </div>
+
+                <!-- Player's Action Panel -->
+                <div class="w-full bg-slate-900/80 border border-slate-700 rounded-xl p-3 flex flex-col md:flex-row items-center justify-between gap-3 mt-3">
+                    <div class="flex items-center gap-3">
+                        <div>
+                            <span class="text-xs text-slate-400">Your Hand (<span id="my-name-display" class="text-amber-300 font-bold"></span>)</span>
+                            <div id="my-hole-cards" class="flex gap-2 mt-1">
+                                <span class="text-xs text-slate-500 italic">No cards dealt</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2 items-center">
+                        <button onclick="playerAction('fold')" class="bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Fold</button>
+                        <button onclick="playerAction('checkcall')" class="bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Check / Call</button>
+                        <div class="flex items-center gap-1">
+                            <input type="number" id="raise-amount" value="40" class="w-16 bg-slate-800 border border-slate-600 rounded text-xs px-2 py-1.5 text-white text-right">
+                            <button onclick="playerAction('raise')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Raise / Bet</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Players Chip Stack Management Grid -->
+            <div>
+                <h4 class="text-sm font-semibold text-slate-300 mb-2">💰 Players Chip Stacks & Positions</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" id="players-grid">
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Award Pot Checkbox Selection -->
+        <div id="modal-award-pot" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
+                <h3 class="text-lg font-bold text-amber-400">🏆 Award Pot Winner</h3>
+                <p class="text-xs text-slate-400">Select the winner(s) to receive the current Pot (<span id="award-pot-amount" class="text-emerald-400 font-bold">0</span> THB):</p>
+                
+                <div id="award-winners-list" class="space-y-2 max-h-48 overflow-y-auto my-2">
+                </div>
+
+                <div class="flex gap-3 pt-2">
+                    <button onclick="closeAwardPotModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium py-2.5 rounded-xl transition">Cancel</button>
+                    <button onclick="confirmAwardPot()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 rounded-xl transition shadow-lg">Confirm Winner</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Host Final Chips Input -->
+        <div id="modal-close-table" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+                <h3 class="text-xl font-bold text-amber-400">🏁 Final Chip Count</h3>
+                <p class="text-xs text-slate-400">Enter final chip stack for each player to calculate exact net profit/loss</p>
+                
+                <div id="final-chips-inputs" class="space-y-3 my-4">
+                </div>
+
+                <div class="flex gap-3 pt-2">
+                    <button onclick="closeTableModalCancel()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-medium py-2.5 rounded-xl transition">Cancel</button>
+                    <button onclick="confirmFinalizeGame()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition shadow-lg">Confirm & Summarize</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main View: Summary & Text Share -->
+        <div id="view-summary" class="hidden space-y-6 text-center">
+            <div class="bg-slate-900/80 p-6 rounded-xl border border-slate-700 space-y-4">
+                <h2 class="text-2xl font-bold text-amber-400">🏁 Game Summary</h2>
+                <p class="text-sm text-slate-400">Table closed successfully. Review results below:</p>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm text-slate-300">
+                        <thead class="bg-slate-800 text-slate-400 uppercase text-xs">
+                            <tr>
+                                <th class="px-4 py-3">Player</th>
+                                <th class="px-4 py-3">Total Buy-In</th>
+                                <th class="px-4 py-3">Final Chips</th>
+                                <th class="px-4 py-3 text-right">Net Profit / Loss (THB)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="summary-table-body" class="divide-y divide-slate-700">
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="pt-4 space-y-3">
+                    <button onclick="copyShareText()" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-2">
+                        📋 Copy Summary Text (Share to LINE)
+                    </button>
+                    <button onclick="resetToLobby()" class="text-sm text-slate-400 hover:text-white underline">Back to Lobby / Create New Room</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Logic -->
+    <script>
+        let gameState = {
+            roomCode: '',
+            buyIn: 300,
+            isHost: false,
+            myPlayerName: '',
+            isClosed: false,
+            pot: 0,
+            currentBet: 0,
+            stage: 'Waiting to Deal',
+            communityCards: [],
+            dealerIndex: 0,
+            sbIndex: 1,
+            bbIndex: 2,
+            activeTurnIndex: 0,
+            playerOrder: [],
+            players: {} // name: { chips, totalBuyIn, holeCards, folded }
+        };
+
+        let tempPresetList = [];
+
+        function addPresetPlayer() {
+            const input = document.getElementById('setup-player-name');
+            const name = input.value.trim();
+            if(!name) return;
+            if(tempPresetList.includes(name)) {
+                alert('Player name already exists');
+                return;
+            }
+            tempPresetList.push(name);
+            input.value = '';
+            renderPresetList();
+        }
+
+        function renderPresetList() {
+            const container = document.getElementById('preset-players-list');
+            if(tempPresetList.length === 0) {
+                container.innerHTML = `<span class="text-xs text-slate-500 italic">No players added yet</span>`;
+                return;
+            }
+            container.innerHTML = tempPresetList.map((name, index) => `
+                <span class="bg-slate-700 text-amber-300 text-xs px-3 py-1 rounded-full flex items-center gap-2">
+                    ${name}
+                    <button onclick="removePreset(${index})" class="text-rose-400 hover:text-rose-300 font-bold">×</button>
+                </span>
+            `).join('');
+        }
+
+        function removePreset(index) {
+            tempPresetList.splice(index, 1);
+            renderPresetList();
+        }
+
+        function createRoom() {
+            const buyInVal = parseInt(document.getElementById('setup-buyin').value) || 300;
+            if(tempPresetList.length === 0) {
+                alert('Please add at least 1 player before launching room');
+                return;
+            }
+
+            const roomCode = 'ROOM-' + Math.floor(1000 + Math.random() * 9000);
+            gameState.roomCode = roomCode;
+            gameState.buyIn = buyInVal;
+            gameState.isHost = true;
+            gameState.isClosed = false;
+            gameState.pot = 0;
+            gameState.currentBet = 0;
+            gameState.stage = 'Waiting to Deal';
+            gameState.communityCards = [];
+            gameState.playerOrder = [...tempPresetList];
+            gameState.dealerIndex = 0;
+            gameState.sbIndex = gameState.playerOrder.length > 1 ? 1 : 0;
+            gameState.bbIndex = gameState.playerOrder.length > 2 ? 2 : (gameState.playerOrder.length > 1 ? 1 : 0);
+            gameState.activeTurnIndex = 0;
+            
+            gameState.players = {};
+            tempPresetList.forEach(name => {
+                gameState.players[name] = { chips: buyInVal, totalBuyIn: buyInVal, holeCards: [], folded: false };
+            });
+
+            saveStateToLocalStorage();
+            alert(`Room created successfully! Room Code: ${roomCode}`);
+            
+            document.getElementById('join-room-code').value = roomCode;
+            loadRoomToJoin();
+        }
+
+        function loadRoomToJoin() {
+            const code = document.getElementById('join-room-code').value.trim().toUpperCase();
+            const saved = localStorage.getItem('poker_' + code);
+            if(!saved) {
+                alert('Room not found. Please check room code.');
+                return;
+            }
+            const data = JSON.parse(saved);
+            gameState.roomCode = code;
+            gameState.buyIn = data.buyIn;
+            gameState.players = data.players;
+            gameState.isClosed = data.isClosed;
+            gameState.pot = data.pot || 0;
+            gameState.currentBet = data.currentBet || 0;
+            gameState.stage = data.stage || 'Waiting to Deal';
+            gameState.communityCards = data.communityCards || [];
+            gameState.playerOrder = data.playerOrder || Object.keys(data.players);
+            gameState.dealerIndex = data.dealerIndex || 0;
+            gameState.sbIndex = data.sbIndex || 0;
+            gameState.bbIndex = data.bbIndex || 0;
+            gameState.activeTurnIndex = data.activeTurnIndex || 0;
+
+            const select = document.getElementById('join-name-select');
+            select.innerHTML = Object.keys(data.players).map(name => `<option value="${name}">${name}</option>`).join('');
+            
+            document.getElementById('join-selection-area').classList.remove('hidden');
+        }
+
+        function joinGameAsPlayer() {
+            const select = document.getElementById('join-name-select');
+            gameState.myPlayerName = select.value;
+            const isHostChecked = document.getElementById('join-as-host-check').checked;
+            
+            if(isHostChecked) {
+                gameState.isHost = true;
+            }
+
+            enterGameView();
+        }
+
+        function enterGameView() {
+            document.getElementById('view-lobby').classList.add('hidden');
+            document.getElementById('view-summary').classList.add('hidden');
+            document.getElementById('view-game').classList.remove('hidden');
+            
+            document.getElementById('room-badge').classList.remove('hidden');
+            document.getElementById('current-room-code').innerText = gameState.roomCode;
+            document.getElementById('current-role-badge').innerText = gameState.myPlayerName + (gameState.isHost ? ' (Host 👑)' : ' (Player)');
+            document.getElementById('display-buyin').innerText = gameState.buyIn;
+            document.getElementById('my-name-display').innerText = gameState.myPlayerName;
+
+            if(gameState.isHost) {
+                document.getElementById('host-close-btn').classList.remove('hidden');
+                document.getElementById('dealer-controls').classList.remove('hidden');
+            } else {
+                document.getElementById('host-close-btn').classList.add('hidden');
+                document.getElementById('dealer-controls').classList.add('hidden');
+            }
+
+            renderGameTable();
+            startPollingState();
+        }
+
+        let pollInterval = null;
+        function startPollingState() {
+            if(pollInterval) clearInterval(pollInterval);
+            pollInterval = setInterval(() => {
+                const saved = localStorage.getItem('poker_' + gameState.roomCode);
+                if(saved) {
+                    const data = JSON.parse(saved);
+                    gameState.players = data.players;
+                    gameState.isClosed = data.isClosed;
+                    gameState.pot = data.pot || 0;
+                    gameState.currentBet = data.currentBet || 0;
+                    gameState.stage = data.stage || 'Waiting to Deal';
+                    gameState.communityCards = data.communityCards || [];
+                    gameState.playerOrder = data.playerOrder || Object.keys(data.players);
+                    gameState.dealerIndex = data.dealerIndex || 0;
+                    gameState.sbIndex = data.sbIndex || 0;
+                    gameState.bbIndex = data.bbIndex || 0;
+                    gameState.activeTurnIndex = data.activeTurnIndex || 0;
+
+                    if(gameState.isClosed) {
+                        showSummaryView();
+                    } else {
+                        renderGameTable();
+                    }
+                }
+            }, 1000);
+        }
+
+        function saveStateToLocalStorage() {
+            const data = {
+                buyIn: gameState.buyIn,
+                isClosed: gameState.isClosed,
+                pot: gameState.pot,
+                currentBet: gameState.currentBet,
+                stage: gameState.stage,
+                communityCards: gameState.communityCards,
+                playerOrder: gameState.playerOrder,
+                dealerIndex: gameState.dealerIndex,
+                sbIndex: gameState.sbIndex,
+                bbIndex: gameState.bbIndex,
+                activeTurnIndex: gameState.activeTurnIndex,
+                players: gameState.players
+            };
+            localStorage.setItem('poker_' + gameState.roomCode, JSON.stringify(data));
+        }
+
+        // True 52-Card Deck Shuffler (Fisher-Yates)
+        function createFullDeck() {
+            const suits = ['♠️', '♥️', '♦️', '♣️'];
+            const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+            let deck = [];
+            for(let s of suits) {
+                for(let v of values) {
+                    deck.push(v + s);
+                }
+            }
+            // Shuffle
+            for(let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+            return deck;
+        }
+
+        function startNewHand() {
+            if(!gameState.isHost) return;
+            
+            // Rotate dealer button
+            const numPlayers = gameState.playerOrder.length;
+            gameState.dealerIndex = (gameState.dealerIndex + 1) % numPlayers;
+            gameState.sbIndex = (gameState.dealerIndex + 1) % numPlayers;
+            gameState.bbIndex = (gameState.dealerIndex + 2) % numPlayers;
+            gameState.activeTurnIndex = (gameState.bbIndex + 1) % numPlayers; // Action starts after BB pre-flop
+
+            let deck = createFullDeck();
+            gameState.pot = 0;
+            gameState.currentBet = 20; // Big blind standard
+            gameState.stage = 'Pre-Flop';
+            gameState.communityCards = [];
+
+            // Deal hole cards & deduct blinds
+            gameState.playerOrder.forEach((name, idx) => {
+                gameState.players[name].holeCards = [deck.pop(), deck.pop()];
+                gameState.players[name].folded = false;
+                
+                if(idx === gameState.sbIndex) {
+                    let sbAmt = Math.min(10, gameState.players[name].chips);
+                    gameState.players[name].chips -= sbAmt;
+                    gameState.pot += sbAmt;
+                } else if(idx === gameState.bbIndex) {
+                    let bbAmt = Math.min(20, gameState.players[name].chips);
+                    gameState.players[name].chips -= bbAmt;
+                    gameState.pot += bbAmt;
+                }
+            });
+
+            saveStateToLocalStorage();
+            renderGameTable();
+        }
+
+        function nextPokerStage() {
+            if(!gameState.isHost) return;
+            let deck = createFullDeck();
+            
+            if(gameState.stage.includes('Pre-Flop')) {
+                gameState.stage = 'Flop';
+                gameState.communityCards = [deck.pop(), deck.pop(), deck.pop()];
+            } else if(gameState.stage.includes('Flop')) {
+                gameState.stage = 'Turn';
+                gameState.communityCards.push(deck.pop());
+            } else if(gameState.stage.includes('Turn')) {
+                gameState.stage = 'River';
+                gameState.communityCards.push(deck.pop());
+            } else if(gameState.stage.includes('River')) {
+                gameState.stage = 'Showdown';
+            }
+            
+            gameState.currentBet = 0;
+            gameState.activeTurnIndex = (gameState.dealerIndex + 1) % gameState.playerOrder.length;
+            saveStateToLocalStorage();
+            renderGameTable();
+        }
+
+        // Award Pot Modal with checkboxes
+        function openAwardPotModal() {
+            const container = document.getElementById('award-winners-list');
+            document.getElementById('award-pot-amount').innerText = gameState.pot;
+            container.innerHTML = gameState.playerOrder.map(name => `
+                <label class="flex items-center justify-between bg-slate-900/60 p-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-900">
+                    <span class="font-bold text-white text-sm">${name}</span>
+                    <input type="checkbox" name="pot-winner" value="${name}" class="w-4 h-4 rounded bg-slate-800 border-slate-600 text-amber-500 focus:ring-amber-400">
+                </label>
+            `).join('');
+            document.getElementById('modal-award-pot').classList.remove('hidden');
+        }
+
+        function closeAwardPotModal() {
+            document.getElementById('modal-award-pot').classList.add('hidden');
+        }
+
+        function confirmAwardPot() {
+            const checkboxes = document.querySelectorAll('input[name="pot-winner"]:checked');
+            if(checkboxes.length === 0) {
+                alert('Please select at least one winner');
+                return;
+            }
+            const winners = Array.from(checkboxes).map(cb => cb.value);
+            const share = Math.floor(gameState.pot / winners.length);
+
+            winners.forEach(wName => {
+                if(gameState.players[wName]) {
+                    gameState.players[wName].chips += share;
+                }
+            });
+
+            alert(`Awarded ${gameState.pot} THB pot evenly to: ${winners.join(', ')}`);
+            gameState.pot = 0;
+            gameState.stage = 'Hand Ended';
+            closeAwardPotModal();
+            saveStateToLocalStorage();
+            renderGameTable();
+        }
+
+        // Turn-based actions
+        function playerAction(type) {
+            const me = gameState.myPlayerName;
+            if(!me || !gameState.players[me]) return;
+            
+            const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex];
+            if(currentTurnPlayer !== me && !gameState.isHost) {
+                alert("It's not your turn yet!");
+                return;
+            }
+
+            if(gameState.players[me].folded) {
+                alert('You have already folded this hand.');
+                return;
+            }
+
+            if(type === 'fold') {
+                gameState.players[me].folded = true;
+            } else if(type === 'checkcall') {
+                const callCost = gameState.currentBet;
+                if(gameState.players[me].chips >= callCost) {
+                    gameState.players[me].chips -= callCost;
+                    gameState.pot += callCost;
+                } else {
+                    gameState.pot += gameState.players[me].chips;
+                    gameState.players[me].chips = 0;
+                }
+            } else if(type === 'raise') {
+                const amount = parseInt(document.getElementById('raise-amount').value) || 40;
+                if(gameState.players[me].chips >= amount) {
+                    gameState.players[me].chips -= amount;
+                    gameState.pot += amount;
+                    gameState.currentBet = amount;
+                } else {
+                    alert('Insufficient chips');
+                    return;
+                }
+            }
+
+            // Advance turn to next active (non-folded) player
+            advanceTurn();
+            saveStateToLocalStorage();
+            renderGameTable();
+        }
+
+        function advanceTurn() {
+            let attempts = 0;
+            do {
+                gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % gameState.playerOrder.length;
+                attempts++;
+                let pName = gameState.playerOrder[gameState.activeTurnIndex];
+                if(!gameState.players[pName].folded) break;
+            } while(attempts < gameState.playerOrder.length);
+        }
+
+        function renderGameTable() {
+            document.getElementById('table-stage').innerText = gameState.stage;
+            document.getElementById('table-pot').innerText = gameState.pot;
+            document.getElementById('table-current-bet').innerText = gameState.currentBet;
+
+            // Community cards
+            const ccDiv = document.getElementById('community-cards');
+            if(gameState.communityCards.length === 0) {
+                ccDiv.innerHTML = `<span class="text-xs text-emerald-400/60 italic">(Waiting for deal)</span>`;
+            } else {
+                ccDiv.innerHTML = gameState.communityCards.map(c => `
+                    <div class="bg-white text-slate-900 font-bold px-3 py-2 rounded-lg shadow border border-slate-300 text-sm md:text-base">${c}</div>
+                `).join('');
+            }
+
+            // My hand
+            const myCardDiv = document.getElementById('my-hole-cards');
+            const myData = gameState.players[gameState.myPlayerName];
+            if(myData && myData.holeCards && myData.holeCards.length > 0) {
+                myCardDiv.innerHTML = myData.holeCards.map(c => `
+                    <div class="bg-amber-100 text-slate-900 font-bold px-3 py-1.5 rounded shadow border border-amber-300 text-sm">${c}</div>
+                `).join('') + (myData.folded ? `<span class="text-xs text-rose-400 font-bold ml-2 self-center">(Folded)</span>` : '');
+            } else {
+                myCardDiv.innerHTML = `<span class="text-xs text-slate-500 italic">No cards dealt</span>`;
+            }
+
+            // Render Player Grid with Turn Highlighting & Positions (D, SB, BB)
+            const grid = document.getElementById('players-grid');
+            grid.innerHTML = gameState.playerOrder.map((name, idx) => {
+                const p = gameState.players[name];
+                const isMyTurn = (idx === gameState.activeTurnIndex && gameState.stage !== 'Waiting to Deal' && gameState.stage !== 'Hand Ended');
+                let badges = [];
+                if(idx === gameState.dealerIndex) badges.push(`<span class="bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">D</span>`);
+                if(idx === gameState.sbIndex) badges.push(`<span class="bg-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">SB</span>`);
+                if(idx === gameState.bbIndex) badges.push(`<span class="bg-amber-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">BB</span>`);
+
+                return `
+                    <div class="bg-slate-800/90 border ${isMyTurn ? 'active-turn border-amber-400 ring-2 ring-amber-400/50' : (name === gameState.myPlayerName ? 'border-emerald-500' : 'border-slate-700')} rounded-xl p-3 flex flex-col justify-between space-y-2 transition duration-300">
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="font-bold text-white text-sm">${name} ${name === gameState.myPlayerName ? '(You)' : ''} ${p.folded ? '🔴' : ''}</span>
+                                ${badges.join(' ')}
+                            </div>
+                            <span class="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-amber-300">Buy-in: ${p.totalBuyIn} ฿</span>
+                        </div>
+                        <div class="bg-slate-900/50 p-2 rounded-lg text-center">
+                            <span class="text-[10px] text-slate-400">Current Chips</span>
+                            <div class="text-lg font-bold text-emerald-400 font-mono">${p.chips} ฿</div>
+                        </div>
+                        ${gameState.isHost || name === gameState.myPlayerName ? `
+                            <div class="flex gap-1">
+                                <button onclick="adjustChips('${name}', 100)" class="flex-1 bg-slate-700 hover:bg-slate-600 text-[11px] py-1 rounded text-white">+100</button>
+                                <button onclick="adjustChips('${name}', -100)" class="flex-1 bg-slate-700 hover:bg-slate-600 text-[11px] py-1 rounded text-white">-100</button>
+                                <button onclick="reBuy('${name}')" class="bg-amber-600 hover:bg-amber-500 text-[11px] px-2 py-1 rounded text-white">Re-buy</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function adjustChips(name, amount) {
+            if(!gameState.players[name]) return;
+            gameState.players[name].chips += amount;
+            if(gameState.players[name].chips < 0) gameState.players[name].chips = 0;
+            saveStateToLocalStorage();
+            renderGameTable();
+        }
+
+        function reBuy(name) {
+            if(!gameState.players[name]) return;
+            gameState.players[name].chips += gameState.buyIn;
+            gameState.players[name].totalBuyIn += gameState.buyIn;
+            saveStateToLocalStorage();
+            renderGameTable();
+        }
+
+        function openCloseTableModal() {
+            const container = document.getElementById('final-chips-inputs');
+            container.innerHTML = Object.entries(gameState.players).map(([name, p]) => `
+                <div class="flex items-center justify-between bg-slate-900/60 p-3 rounded-xl border border-slate-700">
+                    <div>
+                        <span class="font-bold text-white text-sm">${name}</span>
+                        <div class="text-xs text-slate-400">Total Buy-in: ${p.totalBuyIn} ฿</div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="final-chip-${name}" value="${p.chips}" class="w-28 bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-emerald-400 font-bold font-mono text-right focus:outline-none focus:border-amber-400">
+                        <span class="text-xs text-slate-400">Chips</span>
+                    </div>
+                </div>
+            `).join('');
+            document.getElementById('modal-close-table').classList.remove('hidden');
+        }
+
+        function closeTableModalCancel() {
+            document.getElementById('modal-close-table').classList.add('hidden');
+        }
+
+        function confirmFinalizeGame() {
+            Object.keys(gameState.players).forEach(name => {
+                const input = document.getElementById(`final-chip-${name}`);
+                if(input) {
+                    const val = parseInt(input.value);
+                    if(!isNaN(val)) {
+                        gameState.players[name].chips = val;
+                    }
+                }
+            });
+
+            gameState.isClosed = true;
+            saveStateToLocalStorage();
+            document.getElementById('modal-close-table').classList.add('hidden');
+            showSummaryView();
+        }
+
+        function showSummaryView() {
+            if(pollInterval) clearInterval(pollInterval);
+            document.getElementById('view-game').classList.add('hidden');
+            document.getElementById('view-summary').classList.remove('hidden');
+
+            const tbody = document.getElementById('summary-table-body');
+            tbody.innerHTML = Object.entries(gameState.players).map(([name, p]) => {
+                const net = p.chips - p.totalBuyIn;
+                const netColor = net > 0 ? 'text-emerald-400' : net < 0 ? 'text-rose-400' : 'text-slate-300';
+                const netSign = net > 0 ? '+' : '';
+                return `
+                    <tr class="hover:bg-slate-800/50">
+                        <td class="px-4 py-3 font-medium text-white">${name}</td>
+                        <td class="px-4 py-3">${p.totalBuyIn} ฿</td>
+                        <td class="px-4 py-3">${p.chips} ฿</td>
+                        <td class="px-4 py-3 text-right font-bold ${netColor}">${netSign}${net} ฿</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function copyShareText() {
+            let text = `♠️ Poker Cash Game Summary (Room: ${gameState.roomCode})\n`;
+            text += `------------------------------------\n`;
+            Object.entries(gameState.players).forEach(([name, p]) => {
+                const net = p.chips - p.totalBuyIn;
+                const netSign = net > 0 ? '+' : '';
+                text += `👤 ${name}: ${netSign}${net} THB (Buy-in: ${p.totalBuyIn})\n`;
+            });
+            text += `------------------------------------\n`;
+            text += `GG everyone! See you next time 🎉`;
+
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Summary copied to clipboard! Ready to paste into LINE.');
+            });
+        }
+
+        function leaveGame() {
+            if(pollInterval) clearInterval(pollInterval);
+            location.reload();
+        }
+
+        function resetToLobby() {
+            location.reload();
+        }
+    </script>
+</body>
+</html>
