@@ -913,7 +913,6 @@
             return { score: parsed[0].val, name: "High Card" };
         }
 
-        // 🟢 แก้ไขการเริ่มตาใหม่อัตโนมัติหลัง Showdown โดยให้ Host เป็นผู้สั่งการรันมือใหม่เมื่อจบโชว์ดาวน์
         async function evaluateAndTriggerShowdown(activePlayers) {
             gameState.stage = 'Showdown';
 
