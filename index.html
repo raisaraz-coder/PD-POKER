@@ -551,9 +551,10 @@
             alert('Room found! Please select your name from scope to take a seat.');
         }
 
+        // 🟢 รองรับการเข้าร่วมพร้อมกันหลายคนโดยดึง State ล่าสุดจาก Firebase เสมอ
         async function joinGameAsPlayer() {
             const select = document.getElementById('join-name-select');
-            const name = select.value;
+            const name = select.value.trim();
             if(!name) {
                 alert('Please select your name.');
                 return;
@@ -644,6 +645,11 @@
                     gameState.activeTurnIndex = data.activeTurnIndex || 0;
                     gameState.smallBlind = data.smallBlind || 10;
                     gameState.bigBlind = data.bigBlind || 20;
+
+                    // ป้องกัน index เกินขอบเขตถ้ามีผู้เล่นถูกรีเซ็ตหรือเปลี่ยนแปลง
+                    if(gameState.playerOrder.length > 0 && gameState.activeTurnIndex >= gameState.playerOrder.length) {
+                        gameState.activeTurnIndex = 0;
+                    }
 
                     updateSitOutButtonUI();
 
@@ -749,8 +755,6 @@
             gameState.dealerIndex = (gameState.dealerIndex + 1) % numPlayers;
             gameState.sbIndex = (gameState.dealerIndex + 1) % numPlayers;
             gameState.bbIndex = (gameState.dealerIndex + 2) % numPlayers;
-            
-            // เริ่มต้นตาแรกหลัง Pre-flop ให้คนที่อยู่หลัง Big Blind เป็นคนเดินก่อน หรือให้วนหาคนที่ไม่ Sit Out
             gameState.activeTurnIndex = (gameState.bbIndex + 1) % numPlayers;
 
             let deck = createFullDeck();
@@ -787,9 +791,15 @@
                 }
             });
 
-            // ตรวจสอบให้มั่นใจว่า activeTurnIndex ชี้ไปที่คนแรกที่ยังแอคทีฟอยู่จริงๆ
-            while(gameState.players[gameState.playerOrder[gameState.activeTurnIndex]].folded || gameState.players[gameState.playerOrder[gameState.activeTurnIndex]].sitOut) {
+            // ตรวจสอบความถูกต้องของเทิร์นแรก
+            let safetyCount = 0;
+            while(safetyCount < numPlayers) {
+                let currName = gameState.playerOrder[gameState.activeTurnIndex];
+                if(gameState.players[currName] && !gameState.players[currName].folded && !gameState.players[currName].sitOut) {
+                    break;
+                }
                 gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % numPlayers;
+                safetyCount++;
             }
 
             document.getElementById('start-game-btn').classList.add('hidden');
@@ -807,10 +817,14 @@
             gameState.currentBet = 0;
             gameState.activeTurnIndex = (gameState.dealerIndex + 1) % gameState.playerOrder.length;
 
-            // วนหาคนแรกที่ยังไม่หมอบและไม่ได้ sit out
             let attempts = 0;
-            while((gameState.players[gameState.playerOrder[gameState.activeTurnIndex]].folded || gameState.players[gameState.playerOrder[gameState.activeTurnIndex]].sitOut) && attempts < gameState.playerOrder.length) {
-                gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % gameState.playerOrder.length;
+            const numPlayers = gameState.playerOrder.length;
+            while(attempts < numPlayers) {
+                let currName = gameState.playerOrder[gameState.activeTurnIndex];
+                if(gameState.players[currName] && !gameState.players[currName].folded && !gameState.players[currName].sitOut) {
+                    break;
+                }
+                gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % numPlayers;
                 attempts++;
             }
 
@@ -938,18 +952,17 @@
             }, 5000);
         }
 
-        // 🟢 ฟังก์ชันออก Action สำหรับผู้เล่นทุกคนอย่างเท่าเทียม
         async function playerAction(type) {
-            const me = gameState.myPlayerName;
+            const me = gameState.myPlayerName.trim();
             if(!me || !gameState.players[me]) return;
             if(gameState.players[me].sitOut) {
                 alert("You are currently Sit Out. Click 'Sit In' to play.");
                 return;
             }
             
-            const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex];
+            const currentTurnPlayer = (gameState.playerOrder[gameState.activeTurnIndex] || "").trim();
             if(currentTurnPlayer !== me) {
-                alert("It's not your turn yet! Current turn is: " + currentTurnPlayer);
+                alert(`It's not your turn yet! (Current turn: ${currentTurnPlayer}, Your name: ${me})`);
                 return;
             }
 
@@ -998,8 +1011,8 @@
                 alert("Player is Sit Out.");
                 return;
             }
-            const me = gameState.myPlayerName;
-            if(me !== name) {
+            const me = gameState.myPlayerName.trim();
+            if(me !== name.trim()) {
                 alert("You can only perform actions for your own account!");
                 return;
             }
@@ -1008,8 +1021,8 @@
                 return;
             }
 
-            const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex];
-            if(currentTurnPlayer !== name) {
+            const currentTurnPlayer = (gameState.playerOrder[gameState.activeTurnIndex] || "").trim();
+            if(currentTurnPlayer !== name.trim()) {
                 alert("It's not your turn yet!");
                 return;
             }
@@ -1033,7 +1046,6 @@
             await checkBettingRoundComplete();
         }
 
-        // 🟢 ปรับปรุงระบบข้ามตาให้แม่นยำ ไม่ติดลูปและไม่ดีดกลับ Host
         function advanceTurn() {
             let attempts = 0;
             const numPlayers = gameState.playerOrder.length;
@@ -1041,7 +1053,6 @@
                 gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % numPlayers;
                 attempts++;
                 let pName = gameState.playerOrder[gameState.activeTurnIndex];
-                // วนหาคนถัดไปที่ยังอยู่ในเกม (ไม่หมอบ และไม่ Sit Out)
                 if(gameState.players[pName] && !gameState.players[pName].folded && !gameState.players[pName].sitOut) {
                     break;
                 }
@@ -1142,7 +1153,7 @@
 
         async function selfReBuy(name) {
             if(!gameState.players[name]) return;
-            if(gameState.myPlayerName !== name) {
+            if(gameState.myPlayerName.trim() !== name.trim()) {
                 alert("You can only re-buy for your own account!");
                 return;
             }
