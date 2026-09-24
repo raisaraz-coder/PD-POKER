@@ -10,12 +10,12 @@
         @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Prompt', sans-serif; }
         @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.8); border-color: rgb(245, 158, 11); }
-            50% { box-shadow: 0 0 8px rgba(245, 158, 11, 0.3); border-color: rgb(217, 119, 6); }
+            0%, 100% { box-shadow: 0 0 25px rgba(245, 158, 11, 0.9); border-color: rgb(245, 158, 11); }
+            50% { box-shadow: 0 0 10px rgba(245, 158, 11, 0.4); border-color: rgb(217, 119, 6); }
         }
         .active-turn {
             animation: pulse-glow 1.5s infinite;
-            transform: scale(1.05);
+            transform: scale(1.06);
             z-index: 20;
         }
     </style>
@@ -27,7 +27,7 @@
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
             <div>
                 <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Virtual Table</h1>
-                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Casino Layout, Custom Blinds & Direct Room Link</p>
+                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Casino Layout, Live Mid-Game Add & Big Cards</p>
             </div>
             <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
                 Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
@@ -37,7 +37,7 @@
         <!-- Main View: Lobby / Setup -->
         <div id="view-lobby" class="space-y-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Host Panel (Visible to Host or when creating) -->
+                <!-- Host Panel -->
                 <div id="host-setup-panel" class="bg-slate-900/50 p-5 rounded-xl border border-slate-700 space-y-4">
                     <h2 class="text-lg font-semibold text-amber-300">👑 Create Room (Host Only)</h2>
                     <div class="grid grid-cols-3 gap-2">
@@ -67,10 +67,10 @@
                             <span class="text-xs text-slate-500 italic">No players added yet</span>
                         </div>
                     </div>
-                    <button onclick="createRoom()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition shadow-lg">🚀 Launch Poker Table & Share Room</button>
+                    <button onclick="createRoom()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition shadow-lg">🚀 Launch Poker Table</button>
                 </div>
 
-                <!-- Join Panel (For Friends / Players) -->
+                <!-- Join Panel -->
                 <div class="bg-slate-900/50 p-5 rounded-xl border border-slate-700 space-y-4 flex flex-col justify-between">
                     <div>
                         <h2 class="text-lg font-semibold text-emerald-400">🎮 Join Table</h2>
@@ -93,15 +93,6 @@
                             <button onclick="joinGameAsPlayer()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg transition">Enter Table</button>
                         </div>
                     </div>
-
-                    <!-- Share Room Box (Shown after Room is created) -->
-                    <div id="share-room-box" class="hidden bg-slate-800 p-3 rounded-lg border border-emerald-500/50 space-y-2 mt-4">
-                        <span class="text-xs text-emerald-400 font-bold block">🔗 Room Created Successfully!</span>
-                        <div class="flex gap-2">
-                            <input type="text" id="share-link-input" readonly class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 font-mono">
-                            <button onclick="copyRoomShareLink()" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-1 rounded whitespace-nowrap">Copy Link</button>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -115,15 +106,19 @@
                         <span class="text-xs text-slate-400">Buy-In: <strong id="display-buyin" class="text-amber-400">300</strong> THB</span>
                         <span class="text-xs text-slate-400 ml-3">Blinds: <strong id="display-blinds" class="text-white font-mono">10/20</strong> THB</span>
                     </div>
-                    <h3 class="text-sm font-bold text-emerald-400 hidden md:block" id="game-status-text">Table Active</h3>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="copyRoomShareLink()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition flex items-center gap-1">🔗 Share Room</button>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="copyRoomShareLink()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition flex items-center gap-1">🔗 Share Link</button>
+                    <!-- Host Add Player Mid-Game Button -->
+                    <div id="host-add-player-box" class="hidden items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700">
+                        <input type="text" id="midgame-new-player" placeholder="New player name" class="w-28 bg-slate-900 border border-slate-600 rounded text-xs px-2 py-1 text-white">
+                        <button onclick="addPlayerMidGame()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-2.5 py-1 rounded">+ Add</button>
+                    </div>
                     <div id="host-blind-controls" class="hidden items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700">
                         <span class="text-[10px] text-slate-400">SB/BB:</span>
-                        <input type="number" id="quick-sb" class="w-12 bg-slate-900 border border-slate-600 rounded text-xs px-1 text-white text-center" value="10">
+                        <input type="number" id="quick-sb" class="w-10 bg-slate-900 border border-slate-600 rounded text-xs px-1 text-white text-center" value="10">
                         <span class="text-slate-500">/</span>
-                        <input type="number" id="quick-bb" class="w-12 bg-slate-900 border border-slate-600 rounded text-xs px-1 text-white text-center" value="20">
+                        <input type="number" id="quick-bb" class="w-10 bg-slate-900 border border-slate-600 rounded text-xs px-1 text-white text-center" value="20">
                         <button onclick="updateBlinds()" class="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-2 py-1 rounded">Set</button>
                     </div>
                     <button onclick="openCloseTableModal()" id="host-close-btn" class="hidden bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition">🛑 Close Table</button>
@@ -132,26 +127,31 @@
             </div>
 
             <!-- Authentic Oval Poker Table Layout -->
-            <div class="relative w-full h-[520px] bg-emerald-900 border-[10px] border-amber-950 rounded-[180px] shadow-2xl flex flex-col items-center justify-center p-4 my-2 overflow-hidden">
+            <div class="relative w-full h-[540px] bg-emerald-900 border-[10px] border-amber-950 rounded-[180px] shadow-2xl flex flex-col items-center justify-center p-4 my-2 overflow-hidden">
                 <div class="absolute inset-4 border-2 border-emerald-700/60 rounded-[150px] pointer-events-none"></div>
 
-                <!-- Center Table Info: Pot, Stage, Community Cards -->
-                <div class="z-10 flex flex-col items-center space-y-2 bg-emerald-950/70 border border-emerald-700/50 px-6 py-4 rounded-2xl shadow-inner backdrop-blur-sm">
+                <!-- Center Table Info: Pot, Stage, Turn Indicator, Community Cards -->
+                <div class="z-10 flex flex-col items-center space-y-2 bg-emerald-950/80 border border-emerald-700/60 px-6 py-4 rounded-2xl shadow-xl backdrop-blur-sm max-w-xl text-center">
                     <div class="flex gap-4 text-xs font-mono text-emerald-300">
                         <span>STAGE: <strong id="table-stage" class="text-white">Waiting to Deal</strong></span>
                         <span>POT: <strong id="table-pot" class="text-amber-400 text-base">0</strong> THB</span>
                         <span>BET: <strong id="table-current-bet" class="text-white">0</strong> THB</span>
                     </div>
 
-                    <!-- Community Cards -->
-                    <div id="community-cards" class="flex gap-2 min-h-[45px] items-center">
+                    <!-- Turn Indicator Banner (Center) -->
+                    <div id="center-turn-indicator" class="bg-amber-500/20 border border-amber-400/80 text-amber-300 font-bold px-4 py-1 rounded-full text-xs animate-pulse">
+                        Waiting for action...
+                    </div>
+
+                    <!-- Community Cards (Bigger Size) -->
+                    <div id="community-cards" class="flex gap-2.5 min-h-[60px] items-center">
                         <span class="text-xs text-emerald-400/60 italic">(Waiting for deal)</span>
                     </div>
 
                     <!-- Host Controls -->
                     <div id="dealer-controls" class="hidden flex flex-wrap justify-center gap-1.5 pt-1">
-                        <button onclick="startNewHand()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] px-2.5 py-1.5 rounded-md shadow">🃏 Deal Hand</button>
-                        <button onclick="openAwardPotModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-md shadow">🏆 Award Pot</button>
+                        <button onclick="startNewHand()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-md shadow">🃏 Deal Hand</button>
+                        <button onclick="openAwardPotModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3 py-1.5 rounded-md shadow">🏆 Award Pot</button>
                     </div>
                 </div>
 
@@ -160,22 +160,22 @@
                 </div>
             </div>
 
-            <!-- Player's Action Panel -->
+            <!-- Player's Action Panel (Bigger Cards in Hand) -->
             <div class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 flex flex-col md:flex-row items-center justify-between gap-3">
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-4">
                     <div>
                         <span class="text-xs text-slate-400">Your Hand (<span id="my-name-display" class="text-amber-300 font-bold"></span>)</span>
-                        <div id="my-hole-cards" class="flex gap-2 mt-1">
+                        <div id="my-hole-cards" class="flex gap-2.5 mt-1 min-h-[55px] items-center">
                             <span class="text-xs text-slate-500 italic">No cards dealt</span>
                         </div>
                     </div>
                 </div>
                 <div class="flex flex-wrap gap-2 items-center">
-                    <button onclick="playerAction('fold')" class="bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Fold</button>
-                    <button onclick="playerAction('checkcall')" class="bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Check / Call</button>
+                    <button onclick="playerAction('fold')" class="bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-lg transition">Fold</button>
+                    <button onclick="playerAction('checkcall')" class="bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-lg transition">Check / Call</button>
                     <div class="flex items-center gap-1">
-                        <input type="number" id="raise-amount" value="40" class="w-16 bg-slate-800 border border-slate-600 rounded text-xs px-2 py-1.5 text-white text-right">
-                        <button onclick="playerAction('raise')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Raise / Bet</button>
+                        <input type="number" id="raise-amount" value="40" class="w-16 bg-slate-800 border border-slate-600 rounded text-xs px-2 py-2 text-white text-right">
+                        <button onclick="playerAction('raise')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3.5 py-2.5 rounded-lg transition">Raise / Bet</button>
                     </div>
                 </div>
             </div>
@@ -268,13 +268,11 @@
 
         let tempPresetList = [];
 
-        // Check if opened via Shared URL (?room=ROOM-XXXX)
         window.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
             const roomParam = urlParams.get('room');
             if(roomParam) {
                 document.getElementById('join-room-code').value = roomParam;
-                // Hide Host setup panel when friends open the invite link
                 document.getElementById('host-setup-panel').classList.add('hidden');
                 loadRoomToJoin();
             }
@@ -350,13 +348,6 @@
             });
 
             saveStateToLocalStorage();
-            
-            // Show share room box in lobby
-            const cleanUrl = window.location.origin + window.location.pathname;
-            const shareUrl = `${cleanUrl}?room=${roomCode}`;
-            document.getElementById('share-link-input').value = shareUrl;
-            document.getElementById('share-room-box').classList.remove('hidden');
-
             document.getElementById('join-room-code').value = roomCode;
             loadRoomToJoin();
             alert(`Room created successfully! Code: ${roomCode}`);
@@ -368,6 +359,28 @@
             navigator.clipboard.writeText(shareUrl).then(() => {
                 alert('Room invite link copied to clipboard! Send this to your friends.');
             });
+        }
+
+        function addPlayerMidGame() {
+            if(!gameState.isHost) return;
+            const input = document.getElementById('midgame-new-player');
+            const name = input.value.trim();
+            if(!name) return;
+            if(gameState.playerOrder.length >= 10) {
+                alert('Table is full (Max 10 players).');
+                return;
+            }
+            if(gameState.playerOrder.includes(name)) {
+                alert('Player name already exists on table.');
+                return;
+            }
+
+            gameState.playerOrder.push(name);
+            gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn, holeCards: [], folded: true, currentBet: 0 };
+            input.value = '';
+            saveStateToLocalStorage();
+            renderGameTable();
+            alert(`Player "${name}" added to the table successfully!`);
         }
 
         function loadRoomToJoin() {
@@ -432,11 +445,13 @@
                 document.getElementById('dealer-controls').classList.remove('hidden');
                 document.getElementById('host-blind-controls').classList.remove('flex');
                 document.getElementById('host-blind-controls').classList.add('flex');
+                document.getElementById('host-add-player-box').classList.remove('hidden');
+                document.getElementById('host-add-player-box').classList.add('flex');
             } else {
                 document.getElementById('host-close-btn').classList.add('hidden');
                 document.getElementById('dealer-controls').classList.add('hidden');
-                document.getElementById('host-blind-controls').classList.remove('flex');
                 document.getElementById('host-blind-controls').classList.add('hidden');
+                document.getElementById('host-add-player-box').classList.add('hidden');
             }
 
             renderGameTable();
@@ -717,25 +732,37 @@
             document.getElementById('table-pot').innerText = gameState.pot;
             document.getElementById('table-current-bet').innerText = gameState.currentBet;
 
+            // Turn Indicator in Center
+            const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex] || 'None';
+            const turnIndicator = document.getElementById('center-turn-indicator');
+            if(gameState.stage === 'Waiting to Deal' || gameState.stage === 'Hand Ended') {
+                turnIndicator.innerText = `⏳ Waiting for Host to Deal Hand`;
+            } else {
+                turnIndicator.innerText = `👉 CURRENT TURN: ${currentTurnPlayer}`;
+            }
+
+            // Community cards (Bigger size: text-base / px-3.5 / py-2.5)
             const ccDiv = document.getElementById('community-cards');
             if(gameState.communityCards.length === 0) {
                 ccDiv.innerHTML = `<span class="text-xs text-emerald-400/60 italic">(Waiting for deal)</span>`;
             } else {
                 ccDiv.innerHTML = gameState.communityCards.map(c => `
-                    <div class="bg-white text-slate-900 font-bold px-2.5 py-1.5 rounded shadow border border-slate-300 text-sm">${c}</div>
+                    <div class="bg-white text-slate-900 font-bold px-3.5 py-2.5 rounded-lg shadow-md border border-slate-300 text-base md:text-lg">${c}</div>
                 `).join('');
             }
 
+            // My Hole Cards (Bigger size: text-base / px-3.5 / py-2)
             const myCardDiv = document.getElementById('my-hole-cards');
             const myData = gameState.players[gameState.myPlayerName];
             if(myData && myData.holeCards && myData.holeCards.length > 0) {
                 myCardDiv.innerHTML = myData.holeCards.map(c => `
-                    <div class="bg-amber-100 text-slate-900 font-bold px-2.5 py-1 rounded shadow border border-amber-300 text-xs">${c}</div>
+                    <div class="bg-amber-100 text-slate-900 font-bold px-3.5 py-2 rounded-lg shadow-md border border-amber-300 text-base md:text-lg">${c}</div>
                 `).join('') + (myData.folded ? `<span class="text-xs text-rose-400 font-bold ml-2 self-center">(Folded)</span>` : '');
             } else {
                 myCardDiv.innerHTML = `<span class="text-xs text-slate-500 italic">No cards dealt</span>`;
             }
 
+            // Render 10-Player Oval Circular Layout
             const seatsContainer = document.getElementById('poker-seats-container');
             const totalPlayers = gameState.playerOrder.length;
 
