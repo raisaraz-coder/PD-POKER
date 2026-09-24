@@ -324,16 +324,13 @@
                 loadRoomToJoin();
             }
 
-            // ตรวจสอบสถานะการออกหน้าจอ (Visibility API) เพื่อทำ Auto Sit-Out เมื่อสลับแอป
             document.addEventListener("visibilitychange", () => {
                 if (document.visibilityState === "hidden" && gameState.myPlayerName && gameState.roomCode) {
-                    // เมื่อสลับออกไปแอปอื่น ให้บันทึกสถานะ Sit Out อัตโนมัติเพื่อเซฟเกม
                     setSitOutStatus(true);
                 }
             });
         });
 
-        // ตรวจสอบว่าเป็น In-app Browser ของแอปแชทหรือไม่
         function detectInAppBrowser() {
             const ua = navigator.userAgent || navigator.vendor || window.opera;
             const isMessenger = (/FBAN|FBAV/i).test(ua);
@@ -343,10 +340,8 @@
             }
         }
 
-        // ฟังก์ชันช่วยพยายามเปิดลิงก์ออกนอกแอปแชท
         function openInExternalBrowser() {
             const currentUrl = window.location.href;
-            // บน iOS และ Android บังคับเปิดผ่าน window.open หรือพยายามเบี่ยงเบนออกภายนอก
             window.location.href = currentUrl;
         }
 
@@ -409,7 +404,6 @@
             renderQueueList();
         }
 
-        // เพิ่มฟังก์ชัน Add All ดึงรายชื่อจาก Cloud Save ทั้งหมดมาทำ Scope ทันที
         function addAllPresets() {
             selectedRoomPresetsScope = [...savedPresets];
             renderSavedPresetsTiles();
@@ -454,7 +448,6 @@
             `).join('');
         }
 
-        // สร้างห้องโดยตารางจริงจะยังไม่ถูกสร้างตัวละคร จนกว่าผู้เล่นจะกด Join เข้ามาเอง
         async function createRoom() {
             const buyInVal = parseInt(document.getElementById('setup-buyin').value) || 300;
             const sbVal = parseInt(document.getElementById('setup-sb').value) || 10;
@@ -477,9 +470,8 @@
             gameState.stage = 'Waiting to Deal';
             gameState.communityCards = [];
             
-            // เก็บรายชื่อ scope ที่ Host เตรียมไว้ทั้งหมด
             gameState.potentialScope = [...selectedRoomPresetsScope];
-            gameState.playerOrder = []; // ยังไม่มีใครนั่งจนกว่าจะกด Join
+            gameState.playerOrder = [];
             gameState.players = {};
 
             await saveStateToFirebase();
@@ -546,7 +538,6 @@
             gameState.playerOrder = data.playerOrder || [];
             gameState.players = data.players || {};
 
-            // ให้ผู้เล่นเลือกชื่อจากรายชื่อ Scope ที่ Host กำหนดไว้ โดยกรองชื่อคนที่นั่งโต๊ะไปแล้วออก
             const availableNames = gameState.potentialScope.filter(name => !gameState.playerOrder.includes(name));
 
             const select = document.getElementById('join-name-select');
@@ -560,7 +551,6 @@
             alert('Room found! Please select your name from scope to take a seat.');
         }
 
-        // ผู้เล่นกดเข้าโต๊ะด้วยชื่อตัวเอง
         async function joinGameAsPlayer() {
             const select = document.getElementById('join-name-select');
             const name = select.value;
@@ -575,7 +565,6 @@
                 gameState.isHost = true;
             }
 
-            // บันทึกเพิ่มเข้า playerOrder และกำหนดข้อมูลชิปเริ่มต้น
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
             const snapshot = await window.FB_get(roomRef);
             if(snapshot.exists()) {
@@ -656,7 +645,6 @@
                     gameState.smallBlind = data.smallBlind || 10;
                     gameState.bigBlind = data.bigBlind || 20;
 
-                    // อัปเดต UI ปุ่ม Sit Out ตามสถานะปัจจุบันของตัวเอง
                     updateSitOutButtonUI();
 
                     if(gameState.isClosed) {
@@ -690,7 +678,6 @@
             await window.FB_set(roomRef, data);
         }
 
-        // ฟังก์ชันสลับสถานะ Sit Out / Sit In ด้วยตนเอง หรือเมื่อสลับแอป
         async function toggleSitOutStatus() {
             const me = gameState.myPlayerName;
             if(!me || !gameState.players[me]) return;
@@ -705,7 +692,7 @@
 
             gameState.players[me].sitOut = status;
             if(status) {
-                gameState.players[me].folded = true; // ถ้านั่งพัก ให้หมอบอัตโนมัติในตานั้นทันที
+                gameState.players[me].folded = true;
             }
             await saveStateToFirebase();
         }
@@ -762,6 +749,8 @@
             gameState.dealerIndex = (gameState.dealerIndex + 1) % numPlayers;
             gameState.sbIndex = (gameState.dealerIndex + 1) % numPlayers;
             gameState.bbIndex = (gameState.dealerIndex + 2) % numPlayers;
+            
+            // เริ่มต้นตาแรกหลัง Pre-flop ให้คนที่อยู่หลัง Big Blind เป็นคนเดินก่อน หรือให้วนหาคนที่ไม่ Sit Out
             gameState.activeTurnIndex = (gameState.bbIndex + 1) % numPlayers;
 
             let deck = createFullDeck();
@@ -772,7 +761,6 @@
 
             gameState.playerOrder.forEach((name, idx) => {
                 if(gameState.players[name]) {
-                    // หากผู้เล่นคนนั้น Sit Out อยู่ จะไม่แจกไพ่และถือว่าหมอบตลอด
                     const isSitOut = gameState.players[name].sitOut || false;
                     if(isSitOut) {
                         gameState.players[name].holeCards = [];
@@ -799,6 +787,11 @@
                 }
             });
 
+            // ตรวจสอบให้มั่นใจว่า activeTurnIndex ชี้ไปที่คนแรกที่ยังแอคทีฟอยู่จริงๆ
+            while(gameState.players[gameState.playerOrder[gameState.activeTurnIndex]].folded || gameState.players[gameState.playerOrder[gameState.activeTurnIndex]].sitOut) {
+                gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % numPlayers;
+            }
+
             document.getElementById('start-game-btn').classList.add('hidden');
             document.getElementById('deal-hand-btn').classList.remove('hidden');
 
@@ -813,6 +806,13 @@
             });
             gameState.currentBet = 0;
             gameState.activeTurnIndex = (gameState.dealerIndex + 1) % gameState.playerOrder.length;
+
+            // วนหาคนแรกที่ยังไม่หมอบและไม่ได้ sit out
+            let attempts = 0;
+            while((gameState.players[gameState.playerOrder[gameState.activeTurnIndex]].folded || gameState.players[gameState.playerOrder[gameState.activeTurnIndex]].sitOut) && attempts < gameState.playerOrder.length) {
+                gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % gameState.playerOrder.length;
+                attempts++;
+            }
 
             if(gameState.stage.includes('Pre-Flop')) {
                 gameState.stage = 'Flop';
@@ -829,7 +829,6 @@
         }
 
         async function checkBettingRoundComplete() {
-            if(!gameState.isHost) return;
             const activePlayers = gameState.playerOrder.filter(name => gameState.players[name] && !gameState.players[name].folded && !gameState.players[name].sitOut);
             
             if(activePlayers.length <= 1) {
@@ -939,6 +938,7 @@
             }, 5000);
         }
 
+        // 🟢 ฟังก์ชันออก Action สำหรับผู้เล่นทุกคนอย่างเท่าเทียม
         async function playerAction(type) {
             const me = gameState.myPlayerName;
             if(!me || !gameState.players[me]) return;
@@ -948,8 +948,8 @@
             }
             
             const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex];
-            if(currentTurnPlayer !== me && !gameState.isHost) {
-                alert("It's not your turn yet!");
+            if(currentTurnPlayer !== me) {
+                alert("It's not your turn yet! Current turn is: " + currentTurnPlayer);
                 return;
             }
 
@@ -998,7 +998,8 @@
                 alert("Player is Sit Out.");
                 return;
             }
-            if(gameState.myPlayerName !== name && !gameState.isHost) {
+            const me = gameState.myPlayerName;
+            if(me !== name) {
                 alert("You can only perform actions for your own account!");
                 return;
             }
@@ -1008,7 +1009,7 @@
             }
 
             const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex];
-            if(currentTurnPlayer !== name && !gameState.isHost) {
+            if(currentTurnPlayer !== name) {
                 alert("It's not your turn yet!");
                 return;
             }
@@ -1032,14 +1033,19 @@
             await checkBettingRoundComplete();
         }
 
+        // 🟢 ปรับปรุงระบบข้ามตาให้แม่นยำ ไม่ติดลูปและไม่ดีดกลับ Host
         function advanceTurn() {
             let attempts = 0;
+            const numPlayers = gameState.playerOrder.length;
             do {
-                gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % gameState.playerOrder.length;
+                gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % numPlayers;
                 attempts++;
                 let pName = gameState.playerOrder[gameState.activeTurnIndex];
-                if(gameState.players[pName] && !gameState.players[pName].folded && !gameState.players[pName].sitOut) break;
-            } while(attempts < gameState.playerOrder.length);
+                // วนหาคนถัดไปที่ยังอยู่ในเกม (ไม่หมอบ และไม่ Sit Out)
+                if(gameState.players[pName] && !gameState.players[pName].folded && !gameState.players[pName].sitOut) {
+                    break;
+                }
+            } while(attempts < numPlayers);
         }
 
         function renderGameTable() {
@@ -1136,7 +1142,7 @@
 
         async function selfReBuy(name) {
             if(!gameState.players[name]) return;
-            if(gameState.myPlayerName !== name && !gameState.isHost) {
+            if(gameState.myPlayerName !== name) {
                 alert("You can only re-buy for your own account!");
                 return;
             }
