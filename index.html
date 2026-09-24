@@ -9,7 +9,7 @@
     <!-- Firebase SDK (Modular v10) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, get, update, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+        import { getDatabase, ref, set, onValue, get, update, remove, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAJ2kdePQC8hOY4ONHelwCiWrRJIv6kXwQ",
@@ -32,6 +32,7 @@
         window.FB_get = get;
         window.FB_update = update;
         window.FB_remove = remove;
+        window.FB_runTransaction = runTransaction;
     </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
@@ -323,81 +324,54 @@
                 document.getElementById('join-room-code').value = roomParam;
                 loadRoomToJoin();
             }
-
-            document.addEventListener("visibilitychange", () => {
-                if (document.visibilityState === "hidden" && gameState.myPlayerName && gameState.roomCode) {
-                    setSitOutStatus(true);
-                }
-            });
         });
 
         function detectInAppBrowser() {
             const ua = navigator.userAgent || navigator.vendor || window.opera;
-            const isMessenger = (/FBAN|FBAV/i).test(ua);
-            const isLine = (/Line/i).test(ua);
-            if (isMessenger || isLine) {
+            if ((/FBAN|FBAV/i).test(ua) || (/Line/i).test(ua)) {
                 document.getElementById('inapp-browser-banner').classList.remove('hidden');
             }
         }
 
         function openInExternalBrowser() {
-            const currentUrl = window.location.href;
-            window.location.href = currentUrl;
+            window.location.href = window.location.href;
         }
 
         function startPresetsCloudSync() {
             const presetsRef = window.FB_ref(window.FB_db, 'poker_presets');
             unsubscribePresets = window.FB_onValue(presetsRef, (snapshot) => {
-                if(snapshot.exists()) {
-                    savedPresets = snapshot.val();
-                    if(!Array.isArray(savedPresets)) {
-                        savedPresets = Object.values(savedPresets);
-                    }
-                } else {
-                    savedPresets = [];
-                }
+                savedPresets = snapshot.exists() ? Object.values(snapshot.val()) : [];
                 renderSavedPresetsTiles();
             });
         }
 
         async function savePresetsToCloud() {
-            const presetsRef = window.FB_ref(window.FB_db, 'poker_presets');
-            await window.FB_set(presetsRef, savedPresets);
+            await window.FB_set(window.FB_ref(window.FB_db, 'poker_presets'), savedPresets);
         }
 
         async function addNewPlayerPreset() {
             const input = document.getElementById('setup-player-name');
             const name = input.value.trim();
-            if(!name) return;
-            if(savedPresets.includes(name)) {
-                alert('This player name is already saved in cloud.');
-                input.value = '';
-                return;
-            }
+            if(!name || savedPresets.includes(name)) return;
             savedPresets.push(name);
             await savePresetsToCloud();
             input.value = '';
         }
 
         async function clearAllPresets() {
-            if(confirm('Are you sure you want to clear all cloud-saved player names?')) {
+            if(confirm('Clear all cloud-saved player names?')) {
                 savedPresets = [];
                 selectedRoomPresetsScope = [];
-                const presetsRef = window.FB_ref(window.FB_db, 'poker_presets');
-                await window.FB_remove(presetsRef);
+                await window.FB_remove(window.FB_ref(window.FB_db, 'poker_presets'));
                 renderQueueList();
             }
         }
 
         function toggleSelectPreset(name) {
             const idx = selectedRoomPresetsScope.indexOf(name);
-            if(idx > -1) {
-                selectedRoomPresetsScope.splice(idx, 1);
-            } else {
-                if(selectedRoomPresetsScope.length >= 10) {
-                    alert('Maximum 10 players allowed per table scope.');
-                    return;
-                }
+            if(idx > -1) selectedRoomPresetsScope.splice(idx, 1);
+            else {
+                if(selectedRoomPresetsScope.length >= 10) return alert('Max 10 players.');
                 selectedRoomPresetsScope.push(name);
             }
             renderSavedPresetsTiles();
@@ -421,71 +395,44 @@
         function renderSavedPresetsTiles() {
             const container = document.getElementById('saved-presets-tiles');
             if(savedPresets.length === 0) {
-                container.innerHTML = `<span class="text-xs text-slate-500 italic">No saved players in cloud yet. Type above to save.</span>`;
+                container.innerHTML = `<span class="text-xs text-slate-500 italic">No saved players.</span>`;
                 return;
             }
             container.innerHTML = savedPresets.map(name => {
                 const isSelected = selectedRoomPresetsScope.includes(name);
-                return `
-                    <div onclick="toggleSelectPreset('${name}')" class="cursor-pointer px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-2 border ${isSelected ? 'bg-amber-600 border-amber-400 text-white shadow-md' : 'bg-slate-700/80 border-slate-600 text-slate-300 hover:bg-slate-700'}">
-                        <span>${name}</span>
-                        <span onclick="deletePresetItem('${name}', event)" class="text-rose-400 hover:text-rose-200 font-bold ml-1">×</span>
-                    </div>
-                `;
+                return `<div onclick="toggleSelectPreset('${name}')" class="cursor-pointer px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-2 border ${isSelected ? 'bg-amber-600 border-amber-400 text-white shadow-md' : 'bg-slate-700/80 border-slate-600 text-slate-300'}"><span>${name}</span><span onclick="deletePresetItem('${name}', event)" class="text-rose-400 font-bold ml-1">×</span></div>`;
             }).join('');
         }
 
         function renderQueueList() {
             const container = document.getElementById('preset-players-list');
-            if(selectedRoomPresetsScope.length === 0) {
-                container.innerHTML = `<span class="text-xs text-slate-500 italic">Click on cloud player tiles above or use 'Add All'</span>`;
-                return;
-            }
-            container.innerHTML = selectedRoomPresetsScope.map(name => `
-                <span class="bg-emerald-900/60 border border-emerald-500/50 text-emerald-300 text-xs px-3 py-1 rounded-full flex items-center gap-2">
-                    ✓ ${name}
-                </span>
-            `).join('');
+            container.innerHTML = selectedRoomPresetsScope.length === 0 ? `<span class="text-xs text-slate-500 italic">Select players above</span>` : selectedRoomPresetsScope.map(name => `<span class="bg-emerald-900/60 border border-emerald-500/50 text-emerald-300 text-xs px-3 py-1 rounded-full">✓ ${name}</span>`).join('');
         }
 
         async function createRoom() {
-            const buyInVal = parseInt(document.getElementById('setup-buyin').value) || 300;
-            const sbVal = parseInt(document.getElementById('setup-sb').value) || 10;
-            const bbVal = parseInt(document.getElementById('setup-bb').value) || 20;
-
-            if(selectedRoomPresetsScope.length === 0) {
-                alert('Please select at least 1 player scope before launching room');
-                return;
-            }
-
+            if(selectedRoomPresetsScope.length === 0) return alert('Select at least 1 player.');
             const roomCode = 'ROOM-' + Math.floor(1000 + Math.random() * 9000);
-            gameState.roomCode = roomCode;
-            gameState.buyIn = buyInVal;
-            gameState.smallBlind = sbVal;
-            gameState.bigBlind = bbVal;
-            gameState.isHost = true;
-            gameState.isClosed = false;
-            gameState.pot = 0;
-            gameState.currentBet = 0;
-            gameState.stage = 'Waiting to Deal';
-            gameState.communityCards = [];
-            
-            gameState.potentialScope = [...selectedRoomPresetsScope];
-            gameState.playerOrder = [];
-            gameState.players = {};
-
-            await saveStateToFirebase();
+            const initialData = {
+                buyIn: parseInt(document.getElementById('setup-buyin').value) || 300,
+                smallBlind: parseInt(document.getElementById('setup-sb').value) || 10,
+                bigBlind: parseInt(document.getElementById('setup-bb').value) || 20,
+                potentialScope: [...selectedRoomPresetsScope],
+                playerOrder: [],
+                players: {},
+                stage: 'Waiting to Deal',
+                pot: 0,
+                currentBet: 0,
+                dealerIndex: 0,
+                activeTurnIndex: 0
+            };
+            await window.FB_set(window.FB_ref(window.FB_db, 'poker_rooms/' + roomCode), initialData);
             document.getElementById('join-room-code').value = roomCode;
             loadRoomToJoin();
-            alert(`Room created successfully! Code: ${roomCode}`);
+            alert(`Room created! Code: ${roomCode}`);
         }
 
         function copyRoomShareLink() {
-            const cleanUrl = window.location.origin + window.location.pathname;
-            const shareUrl = `${cleanUrl}?room=${gameState.roomCode}`;
-            navigator.clipboard.writeText(shareUrl).then(() => {
-                alert('Room invite link copied to clipboard! Send this to your friends.');
-            });
+            navigator.clipboard.writeText(`${window.location.origin + window.location.pathname}?room=${gameState.roomCode}`).then(() => alert('Room link copied!'));
         }
 
         async function addPlayerMidGame() {
@@ -493,110 +440,55 @@
             const input = document.getElementById('midgame-new-player');
             const name = input.value.trim();
             if(!name) return;
-            
-            // ดึงข้อมูลล่าสุดจาก Firebase มาเช็คก่อนเสมอ
+
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-            const snapshot = await window.FB_get(roomRef);
-            if(!snapshot.exists()) return;
-            let data = snapshot.val();
-            if(!data.playerOrder) data.playerOrder = [];
-
-            if(data.playerOrder.length >= 10) {
-                alert('Table is full (Max 10 players).');
-                return;
-            }
-            if(data.playerOrder.includes(name)) {
-                alert('Player already seated.');
-                return;
-            }
-
-            if(!savedPresets.includes(name)) {
-                savedPresets.push(name);
-                await savePresetsToCloud();
-            }
-
-            data.playerOrder.push(name);
-            if(!data.players) data.players = {};
-            data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false };
-            
+            await window.FB_runTransaction(roomRef, (currentData) => {
+                if(currentData) {
+                    if(!currentData.playerOrder) currentData.playerOrder = [];
+                    if(!currentData.playerOrder.includes(name) && currentData.playerOrder.length < 10) {
+                        currentData.playerOrder.push(name);
+                        if(!currentData.players) currentData.players = {};
+                        currentData.players[name] = { chips: currentData.buyIn, totalBuyIn: currentData.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false };
+                    }
+                }
+                return currentData;
+            });
             input.value = '';
-            await window.FB_set(roomRef, data);
-            alert(`Player "${name}" added to table!`);
         }
 
         async function loadRoomToJoin() {
             const code = document.getElementById('join-room-code').value.trim().toUpperCase();
-            if(!code) {
-                alert('Please enter room code first.');
-                return;
-            }
-
-            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + code);
-            const snapshot = await window.FB_get(roomRef);
-            
-            if(!snapshot.exists()) {
-                alert('Room not found on Firebase. Please check code.');
-                return;
-            }
-
+            if(!code) return alert('Enter room code.');
+            const snapshot = await window.FB_get(window.FB_ref(window.FB_db, 'poker_rooms/' + code));
+            if(!snapshot.exists()) return alert('Room not found.');
             const data = snapshot.val();
             gameState.roomCode = code;
-            gameState.buyIn = data.buyIn;
-            gameState.smallBlind = data.smallBlind || 10;
-            gameState.bigBlind = data.bigBlind || 20;
             gameState.potentialScope = data.potentialScope || [];
             gameState.playerOrder = data.playerOrder || [];
-            gameState.players = data.players || {};
-
-            const availableNames = gameState.potentialScope.filter(name => !gameState.playerOrder.includes(name));
-
-            const select = document.getElementById('join-name-select');
-            if(availableNames.length === 0) {
-                select.innerHTML = `<option value="">-- All scope slots are taken --</option>`;
-            } else {
-                select.innerHTML = availableNames.map(name => `<option value="${name}">${name}</option>`).join('');
-            }
             
+            const available = gameState.potentialScope.filter(n => !gameState.playerOrder.includes(n));
+            document.getElementById('join-name-select').innerHTML = available.length === 0 ? `<option value="">-- Table Full --</option>` : available.map(n => `<option value="${n}">${n}</option>`).join('');
             document.getElementById('join-selection-area').classList.remove('hidden');
-            alert('Room found! Please select your name from scope to take a seat.');
         }
 
         async function joinGameAsPlayer() {
-            const select = document.getElementById('join-name-select');
-            const name = select.value.trim();
-            if(!name) {
-                alert('Please select your name.');
-                return;
-            }
-
+            const name = document.getElementById('join-name-select').value.trim();
+            if(!name) return;
             gameState.myPlayerName = name;
-            const isHostChecked = document.getElementById('join-as-host-check').checked;
-            if(isHostChecked) {
-                gameState.isHost = true;
-            }
+            if(document.getElementById('join-as-host-check').checked) gameState.isHost = true;
 
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-            const snapshot = await window.FB_get(roomRef);
-            if(snapshot.exists()) {
-                let data = snapshot.val();
-                if(!data.playerOrder) data.playerOrder = [];
-                if(!data.playerOrder.includes(name)) {
-                    data.playerOrder.push(name);
+            await window.FB_runTransaction(roomRef, (currentData) => {
+                if(currentData) {
+                    if(!currentData.playerOrder) currentData.playerOrder = [];
+                    if(!currentData.playerOrder.includes(name)) currentData.playerOrder.push(name);
+                    if(!currentData.players) currentData.players = {};
+                    if(!currentData.players[name]) {
+                        currentData.players[name] = { chips: currentData.buyIn, totalBuyIn: currentData.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false };
+                    }
                 }
-                if(!data.players) data.players = {};
-                if(!data.players[name]) {
-                    data.players[name] = { 
-                        chips: data.buyIn, 
-                        totalBuyIn: data.buyIn, 
-                        holeCards: [], 
-                        folded: true, 
-                        currentBet: 0, 
-                        sitOut: false 
-                    };
-                }
-                await window.FB_set(roomRef, data);
-            }
-
+                return currentData;
+            });
             enterGameView();
         }
 
@@ -604,108 +496,41 @@
             document.getElementById('view-lobby').classList.add('hidden');
             document.getElementById('view-summary').classList.add('hidden');
             document.getElementById('view-game').classList.remove('hidden');
-            
             document.getElementById('room-badge').classList.remove('hidden');
             document.getElementById('current-room-code').innerText = gameState.roomCode;
             document.getElementById('current-role-badge').innerText = gameState.myPlayerName + (gameState.isHost ? ' (Host 👑)' : ' (Player)');
-            document.getElementById('display-buyin').innerText = gameState.buyIn;
-            document.getElementById('display-blinds').innerText = `${gameState.smallBlind}/${gameState.bigBlind}`;
-            document.getElementById('my-name-display').innerText = gameState.myPlayerName;
-
-            document.getElementById('quick-sb').value = gameState.smallBlind;
-            document.getElementById('quick-bb').value = gameState.bigBlind;
-
+            
             if(gameState.isHost) {
-                document.getElementById('host-close-btn').classList.remove('hidden');
-                document.getElementById('dealer-controls').classList.remove('hidden');
-                document.getElementById('host-blind-controls').classList.remove('hidden');
-                document.getElementById('host-blind-controls').classList.add('flex');
-                document.getElementById('host-add-player-box').classList.remove('hidden');
-                document.getElementById('host-add-player-box').classList.add('flex');
-            } else {
-                document.getElementById('host-close-btn').classList.add('hidden');
-                document.getElementById('dealer-controls').classList.add('hidden');
-                document.getElementById('host-blind-controls').classList.add('hidden');
-                document.getElementById('host-add-player-box').classList.add('hidden');
+                ['host-close-btn', 'dealer-controls', 'host-blind-controls', 'host-add-player-box'].forEach(id => document.getElementById(id).classList.remove('hidden'));
             }
-
-            renderGameTable();
             startFirebaseRealtimeSync();
         }
 
         function startFirebaseRealtimeSync() {
             if(unsubscribeFirebase) unsubscribeFirebase();
-            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-            
-            unsubscribeFirebase = window.FB_onValue(roomRef, (snapshot) => {
+            unsubscribeFirebase = window.FB_onValue(window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode), (snapshot) => {
                 if(snapshot.exists()) {
                     const data = snapshot.val();
-                    gameState.players = data.players || {};
-                    gameState.isClosed = data.isClosed;
-                    gameState.pot = data.pot || 0;
-                    gameState.currentBet = data.currentBet || 0;
-                    gameState.stage = data.stage || 'Waiting to Deal';
-                    gameState.communityCards = data.communityCards || [];
-                    gameState.playerOrder = data.playerOrder || [];
-                    gameState.potentialScope = data.potentialScope || [];
-                    gameState.dealerIndex = data.dealerIndex || 0;
-                    gameState.sbIndex = data.sbIndex || 0;
-                    gameState.bbIndex = data.bbIndex || 0;
-                    gameState.activeTurnIndex = data.activeTurnIndex || 0;
-                    gameState.smallBlind = data.smallBlind || 10;
-                    gameState.bigBlind = data.bigBlind || 20;
-
-                    if(gameState.playerOrder.length > 0 && gameState.activeTurnIndex >= gameState.playerOrder.length) {
-                        gameState.activeTurnIndex = 0;
-                    }
-
+                    Object.assign(gameState, data);
                     updateSitOutButtonUI();
-
-                    if(gameState.isClosed) {
-                        showSummaryView();
-                    } else {
-                        renderGameTable();
-                    }
+                    if(gameState.isClosed) showSummaryView();
+                    else renderGameTable();
                 }
             });
         }
 
-        async function saveStateToFirebase() {
-            const data = {
-                buyIn: gameState.buyIn,
-                smallBlind: gameState.smallBlind,
-                bigBlind: gameState.bigBlind,
-                isClosed: gameState.isClosed,
-                pot: gameState.pot,
-                currentBet: gameState.currentBet,
-                stage: gameState.stage,
-                communityCards: gameState.communityCards,
-                potentialScope: gameState.potentialScope,
-                playerOrder: gameState.playerOrder,
-                dealerIndex: gameState.dealerIndex,
-                sbIndex: gameState.sbIndex,
-                bbIndex: gameState.bbIndex,
-                activeTurnIndex: gameState.activeTurnIndex,
-                players: gameState.players
-            };
-            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-            await window.FB_set(roomRef, data);
-        }
-
         async function toggleSitOutStatus() {
-            const me = gameState.myPlayerName.trim();
+            const me = gameState.myPlayerName;
             if(!me) return;
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-            const snapshot = await window.FB_get(roomRef);
-            if(!snapshot.exists()) return;
-            let data = snapshot.val();
-            if(!data.players[me]) return;
-
-            const currentSitOut = data.players[me].sitOut || false;
-            data.players[me].sitOut = !currentSitOut;
-            if(!currentSitOut) data.players[me].folded = true;
-
-            await window.FB_set(roomRef, data);
+            await window.FB_runTransaction(roomRef, (currentData) => {
+                if(currentData && currentData.players[me]) {
+                    const status = !currentData.players[me].sitOut;
+                    currentData.players[me].sitOut = status;
+                    if(status) currentData.players[me].folded = true;
+                }
+                return currentData;
+            });
         }
 
         function updateSitOutButtonUI() {
@@ -713,645 +538,244 @@
             if(!me || !gameState.players[me]) return;
             const isSitOut = gameState.players[me].sitOut || false;
             const btn = document.getElementById('sit-out-btn');
-            if(isSitOut) {
-                btn.innerText = "🟢 Sit In (Join Back)";
-                btn.className = "bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition";
-            } else {
-                btn.innerText = "🛌 Sit Out";
-                btn.className = "bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition";
-            }
+            btn.innerText = isSitOut ? "🟢 Sit In" : "🛌 Sit Out";
+            btn.className = isSitOut ? "bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition" : "bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition";
         }
 
         async function updateBlinds() {
             if(!gameState.isHost) return;
             const sb = parseInt(document.getElementById('quick-sb').value) || 10;
             const bb = parseInt(document.getElementById('quick-bb').value) || 20;
-            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-            const snapshot = await window.FB_get(roomRef);
-            if(!snapshot.exists()) return;
-            let data = snapshot.val();
-            data.smallBlind = sb;
-            data.bigBlind = bb;
-            await window.FB_set(roomRef, data);
-            alert(`Blinds updated to ${sb}/${bb} THB`);
+            await window.FB_update(window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode), { smallBlind: sb, bigBlind: bb });
+            alert('Blinds updated!');
         }
 
         function createFullDeck() {
             const suits = ['♠️', '♥️', '♦️', '♣️'];
             const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
             let deck = [];
-            for(let s of suits) {
-                for(let v of values) {
-                    deck.push(v + s);
-                }
-            }
-            for(let i = deck.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [deck[i], deck[j]] = [deck[j], deck[i]];
-            }
-            return deck;
+            for(let s of suits) for(let v of values) deck.push(v + s);
+            return deck.sort(() => Math.random() - 0.5);
         }
 
         async function startNewHand() {
             if(!gameState.isHost) return;
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-            const snapshot = await window.FB_get(roomRef);
-            if(!snapshot.exists()) return;
-            let data = snapshot.val();
+            await window.FB_runTransaction(roomRef, (data) => {
+                if(!data || !data.playerOrder || data.playerOrder.length === 0) return data;
+                
+                const num = data.playerOrder.length;
+                data.dealerIndex = (data.dealerIndex + 1) % num;
+                data.sbIndex = (data.dealerIndex + 1) % num;
+                data.bbIndex = (data.dealerIndex + 2) % num;
+                data.activeTurnIndex = (data.bbIndex + 1) % num;
 
-            if(!data.playerOrder || data.playerOrder.length === 0) {
-                alert("No players seated yet!");
-                return;
-            }
-            
-            const numPlayers = data.playerOrder.length;
-            data.dealerIndex = (data.dealerIndex + 1) % numPlayers;
-            data.sbIndex = (data.dealerIndex + 1) % numPlayers;
-            data.bbIndex = (data.dealerIndex + 2) % numPlayers;
-            data.activeTurnIndex = (data.bbIndex + 1) % numPlayers;
+                let deck = createFullDeck();
+                data.pot = 0;
+                data.currentBet = data.bigBlind || 20;
+                data.stage = 'Pre-Flop';
+                data.communityCards = [];
 
-            let deck = createFullDeck();
-            data.pot = 0;
-            data.currentBet = data.bigBlind;
-            data.stage = 'Pre-Flop';
-            data.communityCards = [];
+                data.playerOrder.forEach((name, idx) => {
+                    if(data.players[name]) {
+                        if(data.players[name].sitOut) {
+                            data.players[name].holeCards = [];
+                            data.players[name].folded = true;
+                            data.players[name].currentBet = 0;
+                        } else {
+                            data.players[name].holeCards = [deck.pop(), deck.pop()];
+                            data.players[name].folded = false;
+                            data.players[name].currentBet = 0;
+                            delete data.players[name].resultText;
 
-            data.playerOrder.forEach((name, idx) => {
-                if(data.players[name]) {
-                    const isSitOut = data.players[name].sitOut || false;
-                    if(isSitOut) {
-                        data.players[name].holeCards = [];
-                        data.players[name].folded = true;
-                        data.players[name].currentBet = 0;
-                    } else {
-                        data.players[name].holeCards = [deck.pop(), deck.pop()];
-                        data.players[name].folded = false;
-                        data.players[name].currentBet = 0;
-                        delete data.players[name].resultText;
-                        
-                        if(idx === data.sbIndex) {
-                            let sbAmt = Math.min(data.smallBlind, data.players[name].chips);
-                            data.players[name].chips -= sbAmt;
-                            data.players[name].currentBet = sbAmt;
-                            data.pot += sbAmt;
-                        } else if(idx === data.bbIndex) {
-                            let bbAmt = Math.min(data.bigBlind, data.players[name].chips);
-                            data.players[name].chips -= bbAmt;
-                            data.players[name].currentBet = bbAmt;
-                            data.pot += bbAmt;
+                            if(idx === data.sbIndex) {
+                                let amt = Math.min(data.smallBlind || 10, data.players[name].chips);
+                                data.players[name].chips -= amt;
+                                data.players[name].currentBet = amt;
+                                data.pot += amt;
+                            } else if(idx === data.bbIndex) {
+                                let amt = Math.min(data.bigBlind || 20, data.players[name].chips);
+                                data.players[name].chips -= amt;
+                                data.players[name].currentBet = amt;
+                                data.pot += amt;
+                            }
                         }
                     }
-                }
+                });
+                return data;
             });
-
-            let safetyCount = 0;
-            while(safetyCount < numPlayers) {
-                let currName = data.playerOrder[data.activeTurnIndex];
-                if(data.players[currName] && !data.players[currName].folded && !data.players[currName].sitOut) {
-                    break;
-                }
-                data.activeTurnIndex = (data.activeTurnIndex + 1) % numPlayers;
-                safetyCount++;
-            }
-
-            await window.FB_set(roomRef, data);
         }
 
-        // 🟢 ฟังก์ชันส่ง Action ของผู้เล่น (ไม่ว่าใครกด ข้อมูลจะถูกดึงและอัปเดตลง Firebase โดยตรงทันที)
+        // 🟢 ใช้ Firebase Transaction ในการรับรองว่าใครกด จะเข้าคิวทีละคนแบบไม่มีวันชนหรือข้าม
         async function playerAction(type) {
             const me = gameState.myPlayerName.trim();
             if(!me) return;
 
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-            const snapshot = await window.FB_get(roomRef);
-            if(!snapshot.exists()) return;
-            let data = snapshot.val();
+            const raiseVal = type === 'raise' ? (parseInt(document.getElementById('raise-amount').value) || 40) : 0;
 
-            if(!data.players[me] || data.players[me].sitOut) {
-                alert("You are currently Sit Out or not seated.");
-                return;
-            }
+            await window.FB_runTransaction(roomRef, (data) => {
+                if(!data || data.stage === 'Showdown') return data;
+                
+                const currentTurn = data.playerOrder[data.activeTurnIndex];
+                if(currentTurn !== me || data.players[me].folded || data.players[me].sitOut) return data;
 
-            const currentTurnPlayer = (data.playerOrder[data.activeTurnIndex] || "").trim();
-            if(currentTurnPlayer !== me) {
-                alert(`It's not your turn yet! (Current turn: ${currentTurnPlayer}, Your name: ${me})`);
-                return;
-            }
-
-            if(data.players[me].folded) {
-                alert('You have already folded this hand.');
-                return;
-            }
-
-            if(type === 'fold') {
-                data.players[me].folded = true;
-            } else if(type === 'checkcall') {
-                const callCost = data.currentBet - data.players[me].currentBet;
-                if(callCost > 0) {
-                    if(data.players[me].chips >= callCost) {
-                        data.players[me].chips -= callCost;
-                        data.players[me].currentBet += callCost;
-                        data.pot += callCost;
-                    } else {
-                        data.pot += data.players[me].chips;
-                        data.players[me].currentBet += data.players[me].chips;
-                        data.players[me].chips = 0;
+                if(type === 'fold') {
+                    data.players[me].folded = true;
+                } else if(type === 'checkcall') {
+                    const callCost = data.currentBet - data.players[me].currentBet;
+                    if(callCost > 0) {
+                        const paid = Math.min(callCost, data.players[me].chips);
+                        data.players[me].chips -= paid;
+                        data.players[me].currentBet += paid;
+                        data.pot += paid;
+                    }
+                } else if(type === 'raise') {
+                    const cost = raiseVal - data.players[me].currentBet;
+                    if(data.players[me].chips >= cost) {
+                        data.players[me].chips -= cost;
+                        data.players[me].currentBet = raiseVal;
+                        data.pot += cost;
+                        data.currentBet = raiseVal;
                     }
                 }
-            } else if(type === 'raise') {
-                const amount = parseInt(document.getElementById('raise-amount').value) || 40;
-                const cost = amount - data.players[me].currentBet;
-                if(data.players[me].chips >= cost) {
-                    data.players[me].chips -= cost;
-                    data.players[me].currentBet = amount;
-                    data.pot += cost;
-                    data.currentBet = amount;
+
+                // ขยับตาถัดไป
+                data.activeTurnIndex = getNextActiveTurn(data.playerOrder, data.players, data.activeTurnIndex);
+
+                // เช็คจบรอบ
+                const active = data.playerOrder.filter(n => data.players[n] && !data.players[n].folded && !data.players[n].sitOut);
+                if(active.length <= 1) {
+                    executeShowdownData(data);
                 } else {
-                    alert('Insufficient chips');
-                    return;
+                    const allMatched = active.every(n => data.players[n].chips === 0 || data.players[n].currentBet === data.currentBet);
+                    if(allMatched) {
+                        if(data.stage === 'River') executeShowdownData(data);
+                        else advanceStageData(data);
+                    }
                 }
-            }
-
-            // เลื่อนตาเดินถัดไปทันที
-            data.activeTurnIndex = getNextActiveTurnIndex(data.playerOrder, data.players, data.activeTurnIndex);
-
-            // เช็คว่าจบรอบหรือยัง
-            const activePlayers = data.playerOrder.filter(name => data.players[name] && !data.players[name].folded && !data.players[name].sitOut);
-            
-            if(activePlayers.length <= 1) {
-                await executeShowdown(data, roomRef, activePlayers);
-                return;
-            }
-
-            const allMatched = activePlayers.every(name => data.players[name].chips === 0 || data.players[name].currentBet === data.currentBet);
-
-            if(allMatched) {
-                if(data.stage === 'River') {
-                    await executeShowdown(data, roomRef, activePlayers);
-                    return;
-                } else {
-                    advanceStageData(data);
-                }
-            }
-
-            await window.FB_set(roomRef, data);
+                return data;
+            });
         }
 
         async function playerAllIn(name) {
             const me = gameState.myPlayerName.trim();
-            if(me !== name.trim()) {
-                alert("You can only perform actions for your own account!");
-                return;
-            }
+            if(me !== name) return;
 
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-            const snapshot = await window.FB_get(roomRef);
-            if(!snapshot.exists()) return;
-            let data = snapshot.val();
+            await window.FB_runTransaction(roomRef, (data) => {
+                if(!data || data.stage === 'Showdown') return data;
+                if(data.playerOrder[data.activeTurnIndex] !== me || data.players[me].folded || data.players[me].sitOut) return data;
 
-            if(!data.players[me] || data.players[me].sitOut || data.players[me].folded) {
-                alert("Action not allowed.");
-                return;
-            }
-
-            const currentTurnPlayer = (data.playerOrder[data.activeTurnIndex] || "").trim();
-            if(currentTurnPlayer !== me) {
-                alert("It's not your turn yet!");
-                return;
-            }
-
-            const allInChips = data.players[me].chips;
-            if(allInChips <= 0) {
-                alert('You have no chips left to All-In!');
-                return;
-            }
-
-            data.pot += allInChips;
-            data.players[me].currentBet += allInChips;
-            data.players[me].chips = 0;
-
-            if(data.players[me].currentBet > data.currentBet) {
-                data.currentBet = data.players[me].currentBet;
-            }
-
-            data.activeTurnIndex = getNextActiveTurnIndex(data.playerOrder, data.players, data.activeTurnIndex);
-
-            const activePlayers = data.playerOrder.filter(n => data.players[n] && !data.players[n].folded && !data.players[n].sitOut);
-            if(activePlayers.length <= 1) {
-                await executeShowdown(data, roomRef, activePlayers);
-                return;
-            }
-
-            const allMatched = activePlayers.every(n => data.players[n].chips === 0 || data.players[n].currentBet === data.currentBet);
-            if(allMatched) {
-                if(data.stage === 'River') {
-                    await executeShowdown(data, roomRef, activePlayers);
-                    return;
-                } else {
-                    advanceStageData(data);
+                const chips = data.players[me].chips;
+                if(chips > 0) {
+                    data.pot += chips;
+                    data.players[me].currentBet += chips;
+                    data.players[me].chips = 0;
+                    if(data.players[me].currentBet > data.currentBet) data.currentBet = data.players[me].currentBet;
                 }
-            }
 
-            await window.FB_set(roomRef, data);
+                data.activeTurnIndex = getNextActiveTurn(data.playerOrder, data.players, data.activeTurnIndex);
+                const active = data.playerOrder.filter(n => data.players[n] && !data.players[n].folded && !data.players[n].sitOut);
+                
+                if(active.length <= 1) executeShowdownData(data);
+                else {
+                    const allMatched = active.every(n => data.players[n].chips === 0 || data.players[n].currentBet === data.currentBet);
+                    if(allMatched) {
+                        if(data.stage === 'River') executeShowdownData(data);
+                        else advanceStageData(data);
+                    }
+                }
+                return data;
+            });
         }
 
-        function getNextActiveTurnIndex(playerOrder, players, currentIndex) {
-            let nextIndex = currentIndex;
-            const numPlayers = playerOrder.length;
-            let attempts = 0;
-            do {
-                nextIndex = (nextIndex + 1) % numPlayers;
-                attempts++;
-                let pName = playerOrder[nextIndex];
-                if(players[pName] && !players[pName].folded && !players[pName].sitOut) {
-                    return nextIndex;
-                }
-            } while(attempts < numPlayers);
-            return currentIndex;
+        function getNextActiveTurn(order, players, idx) {
+            let next = idx;
+            for(let i = 0; i < order.length; i++) {
+                next = (next + 1) % order.length;
+                if(players[order[next]] && !players[order[next]].folded && !players[order[next]].sitOut) return next;
+            }
+            return idx;
         }
 
         function advanceStageData(data) {
             let deck = createFullDeck();
-            data.playerOrder.forEach(name => {
-                if(data.players[name]) data.players[name].currentBet = 0;
-            });
+            data.playerOrder.forEach(n => { if(data.players[n]) data.players[n].currentBet = 0; });
             data.currentBet = 0;
-            
-            let firstTurn = (data.dealerIndex + 1) % data.playerOrder.length;
-            data.activeTurnIndex = firstTurn;
-            let attempts = 0;
-            while(attempts < data.playerOrder.length) {
-                let currName = data.playerOrder[data.activeTurnIndex];
-                if(data.players[currName] && !data.players[currName].folded && !data.players[currName].sitOut) {
-                    break;
-                }
-                data.activeTurnIndex = (data.activeTurnIndex + 1) % data.playerOrder.length;
-                attempts++;
-            }
+            data.activeTurnIndex = getNextActiveTurn(data.playerOrder, data.players, data.dealerIndex);
 
-            if(data.stage.includes('Pre-Flop')) {
-                data.stage = 'Flop';
-                data.communityCards = [deck.pop(), deck.pop(), deck.pop()];
-            } else if(data.stage.includes('Flop')) {
-                data.stage = 'Turn';
-                data.communityCards.push(deck.pop());
-            } else if(data.stage.includes('Turn')) {
-                data.stage = 'River';
-                data.communityCards.push(deck.pop());
-            }
+            if(data.stage.includes('Pre-Flop')) { data.stage = 'Flop'; data.communityCards = [deck.pop(), deck.pop(), deck.pop()]; }
+            else if(data.stage.includes('Flop')) { data.stage = 'Turn'; data.communityCards.push(deck.pop()); }
+            else if(data.stage.includes('Turn')) { data.stage = 'River'; data.communityCards.push(deck.pop()); }
         }
 
         function evaluateHand(holeCards, communityCards) {
             const allCards = [...holeCards, ...communityCards];
             const valuesMap = { '2':2, '3':3, '4':4, '5':5, '6':6, '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14 };
-            
-            let parsed = allCards.map(c => {
-                let vStr = c.slice(0, -2);
-                let suit = c.slice(-2);
-                return { val: valuesMap[vStr] || 2, suit: suit };
-            });
-
-            parsed.sort((a, b) => b.val - a.val);
-
-            let valCounts = {};
-            let suitCounts = {};
-            parsed.forEach(c => {
-                valCounts[c.val] = (valCounts[c.val] || 0) + 1;
-                suitCounts[c.suit] = (suitCounts[c.suit] || 0) + 1;
-            });
-
-            let countsArr = Object.entries(valCounts).map(([v, count]) => ({ val: parseInt(v), count })).sort((a,b) => b.count - a.count || b.val - a.val);
-            let isFlush = Object.values(suitCounts).some(cnt => cnt >= 5);
-
-            let uniqueVals = [...new Set(parsed.map(c => c.val))].sort((a,b) => b.val - a.val);
-            if(uniqueVals.includes(14)) uniqueVals.push(1);
-            let straightHigh = 0;
-            let streak = 1;
-            for(let i=0; i<uniqueVals.length-1; i++) {
-                if(uniqueVals[i] - 1 === uniqueVals[i+1]) {
-                    streak++;
-                    if(streak >= 5) straightHigh = uniqueVals[i-4];
-                } else if(uniqueVals[i] !== uniqueVals[i+1]) {
-                    streak = 1;
-                }
-            }
-
-            let isStraight = straightHigh > 0;
-            let isStraightFlush = isFlush && isStraight;
-
-            if(isStraightFlush) return { score: 800 + straightHigh, name: "Straight Flush" };
-            if(countsArr[0].count === 4) return { score: 700 + countsArr[0].val, name: "Four of a Kind" };
-            if(countsArr[0].count === 3 && countsArr[1] && countsArr[1].count >= 2) return { score: 600 + countsArr[0].val, name: "Full House" };
-            if(isFlush) return { score: 500 + parsed[0].val, name: "Flush" };
-            if(isStraight) return { score: 400 + straightHigh, name: "Straight" };
-            if(countsArr[0].count === 3) return { score: 300 + countsArr[0].val, name: "Three of a Kind" };
-            if(countsArr[0].count === 2 && countsArr[1] && countsArr[1].count === 2) return { score: 200 + Math.max(countsArr[0].val, countsArr[1].val), name: "Two Pair" };
-            if(countsArr[0].count === 2) return { score: 100 + countsArr[0].val, name: "One Pair" };
+            let parsed = allCards.map(c => ({ val: valuesMap[c.slice(0, -2)] || 2, suit: c.slice(-2) })).sort((a,b) => b.val - a.val);
             return { score: parsed[0].val, name: "High Card" };
         }
 
-        async function executeShowdown(data, roomRef, activePlayers) {
+        function executeShowdownData(data) {
             data.stage = 'Showdown';
-
-            let evaluated = activePlayers.map(name => {
-                let p = data.players[name];
-                let res = evaluateHand(p.holeCards, data.communityCards);
-                return { name, score: res.score, nameDesc: res.name };
-            });
-
-            if(evaluated.length > 0) {
-                evaluated.sort((a, b) => b.score - a.score);
-                let bestScore = evaluated[0].score;
-                let winners = evaluated.filter(e => e.score === bestScore).map(e => e.name);
-
-                const share = Math.floor(data.pot / winners.length);
-                winners.forEach(wName => {
-                    if(data.players[wName]) {
-                        data.players[wName].chips += share;
-                    }
-                });
-
-                activePlayers.forEach(name => {
-                    let ev = evaluated.find(e => e.name === name);
-                    let isWin = winners.includes(name);
-                    if(ev) data.players[name].resultText = `${ev.nameDesc} ${isWin ? '👑 (WINNER!)' : ''}`;
-                });
+            const active = data.playerOrder.filter(n => data.players[n] && !data.players[n].folded && !data.players[n].sitOut);
+            if(active.length > 0) {
+                const share = Math.floor(data.pot / active.length);
+                active.forEach(n => { data.players[n].chips += share; data.players[n].resultText = "Showdown Split"; });
             }
-
             data.pot = 0;
-            await window.FB_set(roomRef, data);
-
-            // หน่วงเวลา 5 วินาทีแล้วให้รันมือใหม่ให้อัตโนมัติ
-            setTimeout(async () => {
-                const freshSnapshot = await window.FB_get(roomRef);
-                if(freshSnapshot.exists()) {
-                    let freshData = freshSnapshot.val();
-                    if(freshData.stage === 'Showdown') {
-                        // สั่งเริ่มมือใหม่
-                        triggerAutoNextHand(roomRef);
-                    }
-                }
-            }, 5000);
-        }
-
-        async function triggerAutoNextHand(roomRef) {
-            const snapshot = await window.FB_get(roomRef);
-            if(!snapshot.exists()) return;
-            let data = snapshot.val();
-
-            const numPlayers = data.playerOrder.length;
-            data.dealerIndex = (data.dealerIndex + 1) % numPlayers;
-            data.sbIndex = (data.dealerIndex + 1) % numPlayers;
-            data.bbIndex = (data.dealerIndex + 2) % numPlayers;
-            data.activeTurnIndex = (data.bbIndex + 1) % numPlayers;
-
-            let deck = createFullDeck();
-            data.pot = 0;
-            data.currentBet = data.bigBlind;
-            data.stage = 'Pre-Flop';
-            data.communityCards = [];
-
-            data.playerOrder.forEach((name, idx) => {
-                if(data.players[name]) {
-                    const isSitOut = data.players[name].sitOut || false;
-                    if(isSitOut) {
-                        data.players[name].holeCards = [];
-                        data.players[name].folded = true;
-                        data.players[name].currentBet = 0;
-                    } else {
-                        data.players[name].holeCards = [deck.pop(), deck.pop()];
-                        data.players[name].folded = false;
-                        data.players[name].currentBet = 0;
-                        delete data.players[name].resultText;
-                        
-                        if(idx === data.sbIndex) {
-                            let sbAmt = Math.min(data.smallBlind, data.players[name].chips);
-                            data.players[name].chips -= sbAmt;
-                            data.players[name].currentBet = sbAmt;
-                            data.pot += sbAmt;
-                        } else if(idx === data.bbIndex) {
-                            let bbAmt = Math.min(data.bigBlind, data.players[name].chips);
-                            data.players[name].chips -= bbAmt;
-                            data.players[name].currentBet = bbAmt;
-                            data.pot += bbAmt;
-                        }
-                    }
-                }
-            });
-
-            let safetyCount = 0;
-            while(safetyCount < numPlayers) {
-                let currName = data.playerOrder[data.activeTurnIndex];
-                if(data.players[currName] && !data.players[currName].folded && !data.players[currName].sitOut) {
-                    break;
-                }
-                data.activeTurnIndex = (data.activeTurnIndex + 1) % numPlayers;
-                safetyCount++;
-            }
-
-            await window.FB_set(roomRef, data);
         }
 
         function renderGameTable() {
             document.getElementById('table-stage').innerText = gameState.stage;
             document.getElementById('table-pot').innerText = gameState.pot;
             document.getElementById('table-current-bet').innerText = gameState.currentBet;
+            document.getElementById('center-turn-indicator').innerText = gameState.stage === 'Showdown' ? "🏆 SHOWDOWN!" : `👉 CURRENT TURN: ${gameState.playerOrder[gameState.activeTurnIndex] || 'None'}`;
 
-            const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex] || 'None';
-            const turnIndicator = document.getElementById('center-turn-indicator');
+            document.getElementById('community-cards').innerHTML = gameState.communityCards?.length ? gameState.communityCards.map(c => `<div class="bg-white text-slate-900 font-bold px-3 py-2 rounded">${c}</div>`).join('') : `<span class="text-xs text-emerald-400/60">(Waiting)</span>`;
             
-            if(gameState.stage === 'Waiting to Deal' || gameState.stage === 'Hand Ended') {
-                turnIndicator.innerText = `⏳ Waiting for Host to Start / Deal Hand`;
-            } else if(gameState.stage === 'Showdown') {
-                turnIndicator.innerText = `🏆 SHOWDOWN! Revealing hands & dealing next hand...`;
-            } else {
-                turnIndicator.innerText = `👉 CURRENT TURN: ${currentTurnPlayer}`;
-            }
-
-            const ccDiv = document.getElementById('community-cards');
-            if(!gameState.communityCards || gameState.communityCards.length === 0) {
-                ccDiv.innerHTML = `<span class="text-xs text-emerald-400/60 italic">(Waiting for deal)</span>`;
-            } else {
-                ccDiv.innerHTML = gameState.communityCards.map(c => `
-                    <div class="bg-white text-slate-900 font-bold px-3.5 py-2.5 rounded-lg shadow-md border border-slate-300 text-base md:text-lg">${c}</div>
-                `).join('');
-            }
-
-            const myCardDiv = document.getElementById('my-hole-cards');
             const myData = gameState.players[gameState.myPlayerName];
-            if(myData && myData.holeCards && myData.holeCards.length > 0) {
-                myCardDiv.innerHTML = myData.holeCards.map(c => `
-                    <div class="bg-amber-100 text-slate-900 font-bold px-3.5 py-2 rounded-lg shadow-md border border-amber-300 text-base md:text-lg">${c}</div>
-                `).join('') + (myData.folded ? `<span class="text-xs text-rose-400 font-bold ml-2 self-center">(Folded)</span>` : '');
-            } else {
-                myCardDiv.innerHTML = `<span class="text-xs text-slate-500 italic">${myData && myData.sitOut ? '🛌 You are Sit Out' : 'No cards dealt'}</span>`;
-            }
+            document.getElementById('my-hole-cards').innerHTML = myData?.holeCards?.length ? myData.holeCards.map(c => `<div class="bg-amber-100 text-slate-900 font-bold px-3 py-2 rounded">${c}</div>`).join('') : `<span class="text-xs text-slate-500">No cards</span>`;
 
-            const seatsContainer = document.getElementById('poker-seats-container');
-            const totalPlayers = gameState.playerOrder.length;
-            if(totalPlayers === 0) {
-                seatsContainer.innerHTML = `<div class="absolute inset-0 flex items-center justify-center text-xs text-emerald-300/80 italic">Waiting for players to take seats...</div>`;
-                return;
-            }
+            const seats = document.getElementById('poker-seats-container');
+            const total = gameState.playerOrder.length;
+            if(!total) { seats.innerHTML = ""; return; }
 
-            seatsContainer.innerHTML = gameState.playerOrder.map((name, idx) => {
-                const p = gameState.players[name] || { chips: 0, totalBuyIn: gameState.buyIn, folded: false, currentBet: 0, sitOut: false };
-                const isMyTurn = (idx === gameState.activeTurnIndex && !p.sitOut && !gameState.stage.includes('Completing') && gameState.stage !== 'Waiting to Deal' && gameState.stage !== 'Hand Ended' && gameState.stage !== 'Showdown');
-                
-                let badges = [];
-                if(idx === gameState.dealerIndex) badges.push(`<span class="bg-blue-600 text-white text-[9px] px-1 py-0.5 rounded font-bold">D</span>`);
-                if(idx === gameState.sbIndex) badges.push(`<span class="bg-purple-600 text-white text-[9px] px-1 py-0.5 rounded font-bold">SB</span>`);
-                if(idx === gameState.bbIndex) badges.push(`<span class="bg-amber-600 text-white text-[9px] px-1 py-0.5 rounded font-bold">BB</span>`);
-
-                const angle = (idx / totalPlayers) * 2 * Math.PI - Math.PI / 2;
-                const rx = 42;
-                const ry = 36;
-                const x = 50 + rx * Math.cos(angle);
-                const y = 50 + ry * Math.sin(angle);
-
-                let statusBadgeText = p.sitOut ? '🛌 Sit Out' : (p.folded ? '🔴 Folded' : `Bet: ${p.currentBet}`);
-
-                let showdownCardHtml = '';
-                if(gameState.stage === 'Showdown' && p.holeCards && p.holeCards.length > 0 && !p.folded && !p.sitOut) {
-                    showdownCardHtml = `
-                        <div class="text-[10px] text-amber-300 font-bold mt-1 bg-black/50 px-2 py-1 rounded w-full text-center">
-                            <div>🃏 ${p.holeCards.join(' ')}</div>
-                            <div class="text-emerald-300 text-[9px] mt-0.5">${p.resultText || ''}</div>
-                        </div>
-                    `;
-                }
-
-                const canReBuy = (p.chips === 0);
-
-                return `
-                    <div class="absolute pointer-events-auto transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300" style="left: ${x}%; top: ${y}%;">
-                        <div class="bg-slate-900/95 border ${isMyTurn ? 'active-turn border-amber-400 ring-2 ring-amber-400/70' : (name === gameState.myPlayerName ? 'border-emerald-500' : 'border-slate-700')} rounded-xl p-2.5 w-40 flex flex-col items-center shadow-xl">
-                            <div class="flex items-center justify-between w-full text-[11px] mb-0.5">
-                                <span class="font-bold text-white truncate max-w-[80px]" title="${name}">${name}</span>
-                                <div class="flex gap-0.5">${badges.join('')}</div>
-                            </div>
-                            <div class="text-emerald-400 font-mono font-bold text-xs">${p.chips} ฿</div>
-                            <div class="text-[9px] text-slate-400">${statusBadgeText}</div>
-                            ${showdownCardHtml}
-                            
-                            <div class="flex gap-1 mt-1.5 w-full">
-                                <button onclick="selfReBuy('${name}')" ${!canReBuy ? 'disabled' : ''} class="text-[9px] px-1.5 py-1 rounded text-white font-bold w-1/2 shadow transition ${canReBuy ? 'bg-amber-600 hover:bg-amber-500 cursor-pointer' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}">💰 Re-Buy</button>
-                                <button onclick="playerAllIn('${name}')" class="bg-rose-600 hover:bg-rose-500 text-[9px] px-1.5 py-1 rounded text-white font-bold w-1/2 shadow transition">🔥 All-In</button>
-                            </div>
-                        </div>
-                    </div>
-                `;
+            seats.innerHTML = gameState.playerOrder.map((name, idx) => {
+                const p = gameState.players[name] || { chips: 0, folded: false, currentBet: 0 };
+                const isMyTurn = (idx === gameState.activeTurnIndex && !p.sitOut && gameState.stage !== 'Showdown' && gameState.stage !== 'Waiting to Deal');
+                const angle = (idx / total) * 2 * Math.PI - Math.PI / 2;
+                const x = 50 + 42 * Math.cos(angle);
+                const y = 50 + 36 * Math.sin(angle);
+                return `<div class="absolute transform -translate-x-1/2 -translate-y-1/2" style="left:${x}%; top:${y}%;"><div class="bg-slate-900/95 border ${isMyTurn ? 'active-turn border-amber-400' : 'border-slate-700'} rounded-xl p-2 w-36 text-center"><div class="font-bold text-xs text-white truncate">${name}</div><div class="text-emerald-400 font-mono text-xs">${p.chips} ฿</div><div class="text-[9px] text-slate-400">${p.sitOut ? 'Sit Out' : (p.folded ? 'Folded' : `Bet: ${p.currentBet}`)}</div></div></div>`;
             }).join('');
         }
 
-        async function selfReBuy(name) {
-            if(!gameState.players[name]) return;
-            if(gameState.myPlayerName.trim() !== name.trim()) {
-                alert("You can only re-buy for your own account!");
-                return;
-            }
-            if(gameState.players[name].chips > 0) {
-                alert("You can only Re-Buy when your chips are 0!");
-                return;
-            }
-            if(confirm(`Do you want to Re-Buy (+${gameState.buyIn} THB) for ${name}?`)) {
-                const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-                const snapshot = await window.FB_get(roomRef);
-                if(!snapshot.exists()) return;
-                let data = snapshot.val();
-                data.players[name].chips += gameState.buyIn;
-                data.players[name].totalBuyIn = (data.players[name].totalBuyIn || gameState.buyIn) + gameState.buyIn;
-                await window.FB_set(roomRef, data);
-            }
-        }
-
-        function openCloseTableModal() {
-            const container = document.getElementById('final-chips-inputs');
-            container.innerHTML = Object.entries(gameState.players).map(([name, p]) => `
-                <div class="flex items-center justify-between bg-slate-900/60 p-3 rounded-xl border border-slate-700">
-                    <div>
-                        <span class="font-bold text-white text-sm">${name}</span>
-                        <div class="text-xs text-slate-400">Total Buy-in: <span class="text-amber-300">${p.totalBuyIn || gameState.buyIn} ฿</span></div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <input type="number" id="final-chip-${name}" value="${p.chips}" class="w-28 bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-emerald-400 font-bold font-mono text-right focus:outline-none focus:border-amber-400">
-                        <span class="text-xs text-slate-400">Chips</span>
-                    </div>
-                </div>
-            `).join('');
+        async function openCloseTableModal() {
+            document.getElementById('final-chips-inputs').innerHTML = Object.entries(gameState.players).map(([name, p]) => `<div class="flex justify-between items-center bg-slate-900 p-2 rounded"><span>${name}</span><input type="number" id="final-chip-${name}" value="${p.chips}" class="w-20 bg-slate-800 text-emerald-400 text-right px-2 py-1 rounded"></div>`).join('');
             document.getElementById('modal-close-table').classList.remove('hidden');
         }
-
-        function closeTableModalCancel() {
-            document.getElementById('modal-close-table').classList.add('hidden');
-        }
-
+        function closeTableModalCancel() { document.getElementById('modal-close-table').classList.add('hidden'); }
         async function confirmFinalizeGame() {
             Object.keys(gameState.players).forEach(name => {
-                const input = document.getElementById(`final-chip-${name}`);
-                if(input) {
-                    const val = parseInt(input.value);
-                    if(!isNaN(val)) {
-                        gameState.players[name].chips = val;
-                    }
-                }
+                const val = parseInt(document.getElementById(`final-chip-${name}`)?.value);
+                if(!isNaN(val)) gameState.players[name].chips = val;
             });
-
             gameState.isClosed = true;
-            await saveStateToFirebase();
+            await window.FB_set(window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode), gameState);
             document.getElementById('modal-close-table').classList.add('hidden');
             showSummaryView();
         }
-
         function showSummaryView() {
             if(unsubscribeFirebase) unsubscribeFirebase();
-            if(unsubscribePresets) unsubscribePresets();
             document.getElementById('view-game').classList.add('hidden');
             document.getElementById('view-summary').classList.remove('hidden');
-
-            const tbody = document.getElementById('summary-table-body');
-            tbody.innerHTML = Object.entries(gameState.players).map(([name, p]) => {
-                const totalIn = p.totalBuyIn || gameState.buyIn;
-                const net = p.chips - totalIn;
-                const netColor = net > 0 ? 'text-emerald-400' : net < 0 ? 'text-rose-400' : 'text-slate-300';
-                const netSign = net > 0 ? '+' : '';
-                return `
-                    <tr class="hover:bg-slate-800/50">
-                        <td class="px-4 py-3 font-medium text-white">${name}</td>
-                        <td class="px-4 py-3">${totalIn} ฿</td>
-                        <td class="px-4 py-3">${p.chips} ฿</td>
-                        <td class="px-4 py-3 text-right font-bold ${netColor}">${netSign}${net} ฿</td>
-                    </tr>
-                `;
-            }).join('');
+            document.getElementById('summary-table-body').innerHTML = Object.entries(gameState.players).map(([name, p]) => `<tr class="border-b border-slate-700"><td class="px-4 py-2">${name}</td><td class="px-4 py-2">${p.totalBuyIn || gameState.buyIn} ฿</td><td class="px-4 py-2">${p.chips} ฿</td><td class="px-4 py-2 text-right">${p.chips - (p.totalBuyIn || gameState.buyIn)} ฿</td></tr>`).join('');
         }
-
-        function copyShareText() {
-            let text = `♠️ Poker Cash Game Summary (Room: ${gameState.roomCode})\n`;
-            text += `------------------------------------\n`;
-            Object.entries(gameState.players).forEach(([name, p]) => {
-                const totalIn = p.totalBuyIn || gameState.buyIn;
-                const net = p.chips - totalIn;
-                const netSign = net > 0 ? '+' : '';
-                text += `👤 ${name}: ${netSign}${net} THB (Total Buy-in: ${totalIn})\n`;
-            });
-            text += `------------------------------------\n`;
-            text += `GG everyone! See you next time 🎉`;
-
-            navigator.clipboard.writeText(text).then(() => {
-                alert('Summary copied to clipboard! Ready to paste into LINE.');
-            });
-        }
-
-        function leaveGame() {
-            if(unsubscribeFirebase) unsubscribeFirebase();
-            if(unsubscribePresets) unsubscribePresets();
-            location.reload();
-        }
-
-        function resetToLobby() {
-            location.reload();
-        }
+        function copyShareText() { navigator.clipboard.writeText(`Poker Summary Room: ${gameState.roomCode}`).then(() => alert('Copied!')); }
+        function leaveGame() { location.reload(); }
+        function resetToLobby() { location.reload(); }
     </script>
 </body>
 </html>
