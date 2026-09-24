@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Poker Cash Game & Self-Select Join</title>
+    <title>Poker Cash Game & Hand Evaluator</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Firebase SDK (Modular v10) -->
@@ -53,8 +53,8 @@
         <!-- Header -->
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
             <div>
-                <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Self-Select Join</h1>
-                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Cloud Presets & Direct Self-Join</p>
+                <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Hand Evaluator</h1>
+                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Auto Showdown & Poker Hand Ranking</p>
             </div>
             <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
                 Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
@@ -124,7 +124,7 @@
                             <button onclick="loadRoomToJoin()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 rounded-lg transition">Find Room</button>
                         </div>
                         
-                        <!-- Join Selection Area (Loads Cloud Presets directly) -->
+                        <!-- Join Selection Area -->
                         <div id="join-selection-area" class="mt-4 hidden space-y-3 bg-slate-800/80 p-3 rounded-xl border border-slate-700">
                             <div>
                                 <label class="block text-xs text-slate-400 mb-1">Select your name from Database:</label>
@@ -516,7 +516,6 @@
             gameState.bbIndex = data.bbIndex || 0;
             gameState.activeTurnIndex = data.activeTurnIndex || 0;
 
-            // ดึงรายชื่อทั้งหมดจาก Cloud Presets มาให้เลือกทันที (รวมถึงคนที่มีอยู่ในห้องแล้วและคนใน Database)
             const select = document.getElementById('join-name-select');
             let allNamesSet = new Set([...Object.keys(gameState.players), ...savedPresets]);
             select.innerHTML = Array.from(allNamesSet).map(name => `<option value="${name}">${name}</option>`).join('');
@@ -529,13 +528,11 @@
             const name = customInput.value.trim();
             if(!name) return;
 
-            // บันทึกลง Cloud Presets อัตโนมัติถ้ายังไม่มี
             if(!savedPresets.includes(name)) {
                 savedPresets.push(name);
                 await savePresetsToCloud();
             }
 
-            // เพิ่มเข้าห้องทันทีถ้ายังไม่มีใน room
             if(!gameState.players[name]) {
                 gameState.playerOrder.push(name);
                 gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn, holeCards: [], folded: true, currentBet: 0 };
@@ -558,7 +555,6 @@
                 gameState.isHost = true;
             }
 
-            // ถ้าเลือกชื่อจาก dropdown แล้วยังไม่มีอยู่ใน players ของห้อง ให้เพิ่มเข้าไปทันที
             if(!gameState.players[name]) {
                 gameState.playerOrder.push(name);
                 gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn, holeCards: [], folded: true, currentBet: 0 };
@@ -701,6 +697,7 @@
                 gameState.players[name].holeCards = [deck.pop(), deck.pop()];
                 gameState.players[name].folded = false;
                 gameState.players[name].currentBet = 0;
+                delete gameState.players[name].resultText;
                 
                 if(idx === gameState.sbIndex) {
                     let sbAmt = Math.min(gameState.smallBlind, gameState.players[name].chips);
@@ -749,7 +746,7 @@
             const activePlayers = gameState.playerOrder.filter(name => gameState.players[name] && !gameState.players[name].folded);
             
             if(activePlayers.length === 1) {
-                await triggerAutoShowdownAndNext(activePlayers);
+                await evaluateAndTriggerShowdown(activePlayers);
                 return;
             }
 
@@ -757,7 +754,7 @@
 
             if(allMatched) {
                 if(gameState.stage === 'River') {
-                    await triggerAutoShowdownAndNext(activePlayers);
+                    await evaluateAndTriggerShowdown(activePlayers);
                     return;
                 }
 
@@ -770,22 +767,87 @@
             }
         }
 
-        async function triggerAutoShowdownAndNext(activePlayers) {
-            gameState.stage = 'Showdown';
+        function evaluateHand(holeCards, communityCards) {
+            const allCards = [...holeCards, ...communityCards];
+            const valuesMap = { '2':2, '3':3, '4':4, '5':5, '6':6, '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14 };
             
-            const share = Math.floor(gameState.pot / activePlayers.length);
-            activePlayers.forEach(name => {
-                if(gameState.players[name]) {
-                    gameState.players[name].chips += share;
+            let parsed = allCards.map(c => {
+                let vStr = c.slice(0, -2);
+                let suit = c.slice(-2);
+                return { val: valuesMap[vStr] || 2, suit: suit };
+            });
+
+            parsed.sort((a, b) => b.val - a.val);
+
+            let valCounts = {};
+            let suitCounts = {};
+            parsed.forEach(c => {
+                valCounts[c.val] = (valCounts[c.val] || 0) + 1;
+                suitCounts[c.suit] = (suitCounts[c.suit] || 0) + 1;
+            });
+
+            let countsArr = Object.entries(valCounts).map(([v, count]) => ({ val: parseInt(v), count })).sort((a,b) => b.count - a.count || b.val - a.val);
+            let isFlush = Object.values(suitCounts).some(cnt => cnt >= 5);
+
+            let uniqueVals = [...new Set(parsed.map(c => c.val))].sort((a,b) => b.val - a.val);
+            if(uniqueVals.includes(14)) uniqueVals.push(1);
+            let straightHigh = 0;
+            let streak = 1;
+            for(let i=0; i<uniqueVals.length-1; i++) {
+                if(uniqueVals[i] - 1 === uniqueVals[i+1]) {
+                    streak++;
+                    if(streak >= 5) straightHigh = uniqueVals[i-4];
+                } else if(uniqueVals[i] !== uniqueVals[i+1]) {
+                    streak = 1;
+                }
+            }
+
+            let isStraight = straightHigh > 0;
+            let isStraightFlush = isFlush && isStraight;
+
+            if(isStraightFlush) return { score: 800 + straightHigh, name: "Straight Flush" };
+            if(countsArr[0].count === 4) return { score: 700 + countsArr[0].val, name: "Four of a Kind" };
+            if(countsArr[0].count === 3 && countsArr[1] && countsArr[1].count >= 2) return { score: 600 + countsArr[0].val, name: "Full House" };
+            if(isFlush) return { score: 500 + parsed[0].val, name: "Flush" };
+            if(isStraight) return { score: 400 + straightHigh, name: "Straight" };
+            if(countsArr[0].count === 3) return { score: 300 + countsArr[0].val, name: "Three of a Kind" };
+            if(countsArr[0].count === 2 && countsArr[1] && countsArr[1].count === 2) return { score: 200 + Math.max(countsArr[0].val, countsArr[1].val), name: "Two Pair" };
+            if(countsArr[0].count === 2) return { score: 100 + countsArr[0].val, name: "One Pair" };
+            return { score: parsed[0].val, name: "High Card" };
+        }
+
+        async function evaluateAndTriggerShowdown(activePlayers) {
+            gameState.stage = 'Showdown';
+
+            let evaluated = activePlayers.map(name => {
+                let p = gameState.players[name];
+                let res = evaluateHand(p.holeCards, gameState.communityCards);
+                return { name, score: res.score, nameDesc: res.name };
+            });
+
+            evaluated.sort((a, b) => b.score - a.score);
+            let bestScore = evaluated[0].score;
+            let winners = evaluated.filter(e => e.score === bestScore).map(e => e.name);
+
+            const share = Math.floor(gameState.pot / winners.length);
+            winners.forEach(wName => {
+                if(gameState.players[wName]) {
+                    gameState.players[wName].chips += share;
                 }
             });
-            
+
+            activePlayers.forEach(name => {
+                let ev = evaluated.find(e => e.name === name);
+                let isWin = winners.includes(name);
+                gameState.players[name].resultText = `${ev.nameDesc} ${isWin ? '👑 (WINNER!)' : ''}`;
+            });
+
             gameState.pot = 0;
             await saveStateToFirebase();
 
             setTimeout(async () => {
                 await startNewHand();
-            }, 4000);
+            }, 5000);
         }
 
         async function playerAction(type) {
@@ -837,6 +899,42 @@
             await checkBettingRoundComplete();
         }
 
+        async function playerAllIn(name) {
+            if(!gameState.players[name]) return;
+            if(gameState.myPlayerName !== name && !gameState.isHost) {
+                alert("You can only perform actions for your own account!");
+                return;
+            }
+            if(gameState.players[name].folded) {
+                alert('You have already folded this hand.');
+                return;
+            }
+
+            const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex];
+            if(currentTurnPlayer !== name && !gameState.isHost) {
+                alert("It's not your turn yet!");
+                return;
+            }
+
+            const allInChips = gameState.players[name].chips;
+            if(allInChips <= 0) {
+                alert('You have no chips left to All-In!');
+                return;
+            }
+
+            gameState.pot += allInChips;
+            gameState.players[name].currentBet += allInChips;
+            gameState.players[name].chips = 0;
+
+            if(gameState.players[name].currentBet > gameState.currentBet) {
+                gameState.currentBet = gameState.players[name].currentBet;
+            }
+
+            advanceTurn();
+            await saveStateToFirebase();
+            await checkBettingRoundComplete();
+        }
+
         function advanceTurn() {
             let attempts = 0;
             do {
@@ -858,7 +956,7 @@
             if(gameState.stage === 'Waiting to Deal' || gameState.stage === 'Hand Ended') {
                 turnIndicator.innerText = `⏳ Waiting for Host to Start / Deal Hand`;
             } else if(gameState.stage === 'Showdown') {
-                turnIndicator.innerText = `🏆 SHOWDOWN! Awarding pot & starting next hand...`;
+                turnIndicator.innerText = `🏆 SHOWDOWN! Revealing hands and awarding pot...`;
             } else {
                 turnIndicator.innerText = `👉 CURRENT TURN: ${currentTurnPlayer}`;
             }
@@ -886,7 +984,7 @@
             const totalPlayers = gameState.playerOrder.length;
 
             seatsContainer.innerHTML = gameState.playerOrder.map((name, idx) => {
-                const p = gameState.players[name] || { chips: 0, folded: false, currentBet: 0 };
+                const p = gameState.players[name] || { chips: 0, totalBuyIn: gameState.buyIn, folded: false, currentBet: 0 };
                 const isMyTurn = (idx === gameState.activeTurnIndex && !gameState.stage.includes('Completing') && gameState.stage !== 'Waiting to Deal' && gameState.stage !== 'Hand Ended' && gameState.stage !== 'Showdown');
                 
                 let badges = [];
@@ -902,12 +1000,20 @@
 
                 let showdownCardHtml = '';
                 if(gameState.stage === 'Showdown' && p.holeCards && p.holeCards.length > 0 && !p.folded) {
-                    showdownCardHtml = `<div class="text-[11px] text-amber-300 font-bold mt-1 bg-black/40 px-2 py-0.5 rounded">🃏 ${p.holeCards.join(' ')}</div>`;
+                    showdownCardHtml = `
+                        <div class="text-[10px] text-amber-300 font-bold mt-1 bg-black/50 px-2 py-1 rounded w-full text-center">
+                            <div>🃏 ${p.holeCards.join(' ')}</div>
+                            <div class="text-emerald-300 text-[9px] mt-0.5">${p.resultText || ''}</div>
+                        </div>
+                    `;
                 }
+
+                // เงื่อนไข Re-Buy: กดได้เฉพาะตอนเงินเหลือ 0 เท่านั้น
+                const canReBuy = (p.chips === 0);
 
                 return `
                     <div class="absolute pointer-events-auto transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300" style="left: ${x}%; top: ${y}%;">
-                        <div class="bg-slate-900/95 border ${isMyTurn ? 'active-turn border-amber-400 ring-2 ring-amber-400/70' : (name === gameState.myPlayerName ? 'border-emerald-500' : 'border-slate-700')} rounded-xl p-2.5 w-36 flex flex-col items-center shadow-xl">
+                        <div class="bg-slate-900/95 border ${isMyTurn ? 'active-turn border-amber-400 ring-2 ring-amber-400/70' : (name === gameState.myPlayerName ? 'border-emerald-500' : 'border-slate-700')} rounded-xl p-2.5 w-40 flex flex-col items-center shadow-xl">
                             <div class="flex items-center justify-between w-full text-[11px] mb-0.5">
                                 <span class="font-bold text-white truncate max-w-[80px]" title="${name}">${name}</span>
                                 <div class="flex gap-0.5">${badges.join('')}</div>
@@ -916,30 +1022,32 @@
                             <div class="text-[9px] text-slate-400">${p.folded ? '🔴 Folded' : `Bet: ${p.currentBet}`}</div>
                             ${showdownCardHtml}
                             
-                            ${gameState.isHost || name === gameState.myPlayerName ? `
-                                <div class="flex gap-1 mt-1.5 w-full">
-                                    <button onclick="adjustChips('${name}', 100)" class="bg-slate-800 hover:bg-slate-700 text-[9px] px-1.5 py-0.5 rounded text-white flex-1">+100</button>
-                                    <button onclick="reBuy('${name}')" class="bg-amber-600 hover:bg-amber-500 text-[9px] px-1.5 py-0.5 rounded text-white font-medium">Re</button>
-                                </div>
-                            ` : ''}
+                            <!-- Action buttons: Re-Buy (Locked when chips > 0) & All-In -->
+                            <div class="flex gap-1 mt-1.5 w-full">
+                                <button onclick="selfReBuy('${name}')" ${!canReBuy ? 'disabled' : ''} class="text-[9px] px-1.5 py-1 rounded text-white font-bold w-1/2 shadow transition ${canReBuy ? 'bg-amber-600 hover:bg-amber-500 cursor-pointer' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}">💰 Re-Buy</button>
+                                <button onclick="playerAllIn('${name}')" class="bg-rose-600 hover:bg-rose-500 text-[9px] px-1.5 py-1 rounded text-white font-bold w-1/2 shadow transition">🔥 All-In</button>
+                            </div>
                         </div>
                     </div>
                 `;
             }).join('');
         }
 
-        async function adjustChips(name, amount) {
+        async function selfReBuy(name) {
             if(!gameState.players[name]) return;
-            gameState.players[name].chips += amount;
-            if(gameState.players[name].chips < 0) gameState.players[name].chips = 0;
-            await saveStateToFirebase();
-        }
-
-        async function reBuy(name) {
-            if(!gameState.players[name]) return;
-            gameState.players[name].chips += gameState.buyIn;
-            gameState.players[name].totalBuyIn += gameState.buyIn;
-            await saveStateToFirebase();
+            if(gameState.myPlayerName !== name && !gameState.isHost) {
+                alert("You can only re-buy for your own account!");
+                return;
+            }
+            if(gameState.players[name].chips > 0) {
+                alert("You can only Re-Buy when your chips are 0!");
+                return;
+            }
+            if(confirm(`Do you want to Re-Buy (+${gameState.buyIn} THB) for ${name}?`)) {
+                gameState.players[name].chips += gameState.buyIn;
+                gameState.players[name].totalBuyIn = (gameState.players[name].totalBuyIn || gameState.buyIn) + gameState.buyIn;
+                await saveStateToFirebase();
+            }
         }
 
         function openCloseTableModal() {
@@ -948,7 +1056,7 @@
                 <div class="flex items-center justify-between bg-slate-900/60 p-3 rounded-xl border border-slate-700">
                     <div>
                         <span class="font-bold text-white text-sm">${name}</span>
-                        <div class="text-xs text-slate-400">Total Buy-in: ${p.totalBuyIn} ฿</div>
+                        <div class="text-xs text-slate-400">Total Buy-in: <span class="text-amber-300">${p.totalBuyIn || gameState.buyIn} ฿</span></div>
                     </div>
                     <div class="flex items-center gap-2">
                         <input type="number" id="final-chip-${name}" value="${p.chips}" class="w-28 bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-emerald-400 font-bold font-mono text-right focus:outline-none focus:border-amber-400">
@@ -988,13 +1096,14 @@
 
             const tbody = document.getElementById('summary-table-body');
             tbody.innerHTML = Object.entries(gameState.players).map(([name, p]) => {
-                const net = p.chips - p.totalBuyIn;
+                const totalIn = p.totalBuyIn || gameState.buyIn;
+                const net = p.chips - totalIn;
                 const netColor = net > 0 ? 'text-emerald-400' : net < 0 ? 'text-rose-400' : 'text-slate-300';
                 const netSign = net > 0 ? '+' : '';
                 return `
                     <tr class="hover:bg-slate-800/50">
                         <td class="px-4 py-3 font-medium text-white">${name}</td>
-                        <td class="px-4 py-3">${p.totalBuyIn} ฿</td>
+                        <td class="px-4 py-3">${totalIn} ฿</td>
                         <td class="px-4 py-3">${p.chips} ฿</td>
                         <td class="px-4 py-3 text-right font-bold ${netColor}">${netSign}${net} ฿</td>
                     </tr>
@@ -1006,9 +1115,10 @@
             let text = `♠️ Poker Cash Game Summary (Room: ${gameState.roomCode})\n`;
             text += `------------------------------------\n`;
             Object.entries(gameState.players).forEach(([name, p]) => {
-                const net = p.chips - p.totalBuyIn;
+                const totalIn = p.totalBuyIn || gameState.buyIn;
+                const net = p.chips - totalIn;
                 const netSign = net > 0 ? '+' : '';
-                text += `👤 ${name}: ${netSign}${net} THB (Buy-in: ${p.totalBuyIn})\n`;
+                text += `👤 ${name}: ${netSign}${net} THB (Total Buy-in: ${totalIn})\n`;
             });
             text += `------------------------------------\n`;
             text += `GG everyone! See you next time 🎉`;
