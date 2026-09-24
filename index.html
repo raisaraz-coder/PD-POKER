@@ -551,7 +551,6 @@
             alert('Room found! Please select your name from scope to take a seat.');
         }
 
-        // 🟢 รองรับการเข้าร่วมพร้อมกันหลายคนโดยดึง State ล่าสุดจาก Firebase เสมอ
         async function joinGameAsPlayer() {
             const select = document.getElementById('join-name-select');
             const name = select.value.trim();
@@ -646,7 +645,6 @@
                     gameState.smallBlind = data.smallBlind || 10;
                     gameState.bigBlind = data.bigBlind || 20;
 
-                    // ป้องกัน index เกินขอบเขตถ้ามีผู้เล่นถูกรีเซ็ตหรือเปลี่ยนแปลง
                     if(gameState.playerOrder.length > 0 && gameState.activeTurnIndex >= gameState.playerOrder.length) {
                         gameState.activeTurnIndex = 0;
                     }
@@ -791,7 +789,6 @@
                 }
             });
 
-            // ตรวจสอบความถูกต้องของเทิร์นแรก
             let safetyCount = 0;
             while(safetyCount < numPlayers) {
                 let currName = gameState.playerOrder[gameState.activeTurnIndex];
@@ -863,7 +860,7 @@
 
                 setTimeout(async () => {
                     await advanceStage();
-                }, 2000);
+                }, 1500);
             }
         }
 
@@ -916,6 +913,7 @@
             return { score: parsed[0].val, name: "High Card" };
         }
 
+        // 🟢 แก้ไขการเริ่มตาใหม่อัตโนมัติหลัง Showdown โดยให้ Host เป็นผู้สั่งการรันมือใหม่เมื่อจบโชว์ดาวน์
         async function evaluateAndTriggerShowdown(activePlayers) {
             gameState.stage = 'Showdown';
 
@@ -947,9 +945,12 @@
             gameState.pot = 0;
             await saveStateToFirebase();
 
-            setTimeout(async () => {
-                await startNewHand();
-            }, 5000);
+            // หน่วงเวลา 5 วินาทีให้ทุกคนเห็นไพ่ แล้วให้ Host ทำการรันมือใหม่ให้อัตโนมัติทันที
+            if(gameState.isHost) {
+                setTimeout(async () => {
+                    await startNewHand();
+                }, 5000);
+            }
         }
 
         async function playerAction(type) {
@@ -1070,7 +1071,7 @@
             if(gameState.stage === 'Waiting to Deal' || gameState.stage === 'Hand Ended') {
                 turnIndicator.innerText = `⏳ Waiting for Host to Start / Deal Hand`;
             } else if(gameState.stage === 'Showdown') {
-                turnIndicator.innerText = `🏆 SHOWDOWN! Revealing hands and awarding pot...`;
+                turnIndicator.innerText = `🏆 SHOWDOWN! Revealing hands and dealing next hand shortly...`;
             } else {
                 turnIndicator.innerText = `👉 CURRENT TURN: ${currentTurnPlayer}`;
             }
