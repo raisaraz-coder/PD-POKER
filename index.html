@@ -493,11 +493,19 @@
             const input = document.getElementById('midgame-new-player');
             const name = input.value.trim();
             if(!name) return;
-            if(gameState.playerOrder.length >= 10) {
+            
+            // ดึงข้อมูลล่าสุดจาก Firebase มาเช็คก่อนเสมอ
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
+            const snapshot = await window.FB_get(roomRef);
+            if(!snapshot.exists()) return;
+            let data = snapshot.val();
+            if(!data.playerOrder) data.playerOrder = [];
+
+            if(data.playerOrder.length >= 10) {
                 alert('Table is full (Max 10 players).');
                 return;
             }
-            if(gameState.playerOrder.includes(name)) {
+            if(data.playerOrder.includes(name)) {
                 alert('Player already seated.');
                 return;
             }
@@ -507,10 +515,12 @@
                 await savePresetsToCloud();
             }
 
-            gameState.playerOrder.push(name);
-            gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false };
+            data.playerOrder.push(name);
+            if(!data.players) data.players = {};
+            data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false };
+            
             input.value = '';
-            await saveStateToFirebase();
+            await window.FB_set(roomRef, data);
             alert(`Player "${name}" added to table!`);
         }
 
@@ -683,22 +693,19 @@
         }
 
         async function toggleSitOutStatus() {
-            const me = gameState.myPlayerName;
-            if(!me || !gameState.players[me]) return;
-            const currentSitOut = gameState.players[me].sitOut || false;
-            await setSitOutStatus(!currentSitOut);
-        }
+            const me = gameState.myPlayerName.trim();
+            if(!me) return;
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
+            const snapshot = await window.FB_get(roomRef);
+            if(!snapshot.exists()) return;
+            let data = snapshot.val();
+            if(!data.players[me]) return;
 
-        async function setSitOutStatus(status) {
-            const me = gameState.myPlayerName;
-            if(!me || !gameState.players[me]) return;
-            if(gameState.players[me].sitOut === status) return;
+            const currentSitOut = data.players[me].sitOut || false;
+            data.players[me].sitOut = !currentSitOut;
+            if(!currentSitOut) data.players[me].folded = true;
 
-            gameState.players[me].sitOut = status;
-            if(status) {
-                gameState.players[me].folded = true;
-            }
-            await saveStateToFirebase();
+            await window.FB_set(roomRef, data);
         }
 
         function updateSitOutButtonUI() {
@@ -719,10 +726,13 @@
             if(!gameState.isHost) return;
             const sb = parseInt(document.getElementById('quick-sb').value) || 10;
             const bb = parseInt(document.getElementById('quick-bb').value) || 20;
-            gameState.smallBlind = sb;
-            gameState.bigBlind = bb;
-            document.getElementById('display-blinds').innerText = `${sb}/${bb}`;
-            await saveStateToFirebase();
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
+            const snapshot = await window.FB_get(roomRef);
+            if(!snapshot.exists()) return;
+            let data = snapshot.val();
+            data.smallBlind = sb;
+            data.bigBlind = bb;
+            await window.FB_set(roomRef, data);
             alert(`Blinds updated to ${sb}/${bb} THB`);
         }
 
@@ -744,46 +754,51 @@
 
         async function startNewHand() {
             if(!gameState.isHost) return;
-            if(!gameState.playerOrder || gameState.playerOrder.length === 0) {
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
+            const snapshot = await window.FB_get(roomRef);
+            if(!snapshot.exists()) return;
+            let data = snapshot.val();
+
+            if(!data.playerOrder || data.playerOrder.length === 0) {
                 alert("No players seated yet!");
                 return;
             }
             
-            const numPlayers = gameState.playerOrder.length;
-            gameState.dealerIndex = (gameState.dealerIndex + 1) % numPlayers;
-            gameState.sbIndex = (gameState.dealerIndex + 1) % numPlayers;
-            gameState.bbIndex = (gameState.dealerIndex + 2) % numPlayers;
-            gameState.activeTurnIndex = (gameState.bbIndex + 1) % numPlayers;
+            const numPlayers = data.playerOrder.length;
+            data.dealerIndex = (data.dealerIndex + 1) % numPlayers;
+            data.sbIndex = (data.dealerIndex + 1) % numPlayers;
+            data.bbIndex = (data.dealerIndex + 2) % numPlayers;
+            data.activeTurnIndex = (data.bbIndex + 1) % numPlayers;
 
             let deck = createFullDeck();
-            gameState.pot = 0;
-            gameState.currentBet = gameState.bigBlind;
-            gameState.stage = 'Pre-Flop';
-            gameState.communityCards = [];
+            data.pot = 0;
+            data.currentBet = data.bigBlind;
+            data.stage = 'Pre-Flop';
+            data.communityCards = [];
 
-            gameState.playerOrder.forEach((name, idx) => {
-                if(gameState.players[name]) {
-                    const isSitOut = gameState.players[name].sitOut || false;
+            data.playerOrder.forEach((name, idx) => {
+                if(data.players[name]) {
+                    const isSitOut = data.players[name].sitOut || false;
                     if(isSitOut) {
-                        gameState.players[name].holeCards = [];
-                        gameState.players[name].folded = true;
-                        gameState.players[name].currentBet = 0;
+                        data.players[name].holeCards = [];
+                        data.players[name].folded = true;
+                        data.players[name].currentBet = 0;
                     } else {
-                        gameState.players[name].holeCards = [deck.pop(), deck.pop()];
-                        gameState.players[name].folded = false;
-                        gameState.players[name].currentBet = 0;
-                        delete gameState.players[name].resultText;
+                        data.players[name].holeCards = [deck.pop(), deck.pop()];
+                        data.players[name].folded = false;
+                        data.players[name].currentBet = 0;
+                        delete data.players[name].resultText;
                         
-                        if(idx === gameState.sbIndex) {
-                            let sbAmt = Math.min(gameState.smallBlind, gameState.players[name].chips);
-                            gameState.players[name].chips -= sbAmt;
-                            gameState.players[name].currentBet = sbAmt;
-                            gameState.pot += sbAmt;
-                        } else if(idx === gameState.bbIndex) {
-                            let bbAmt = Math.min(gameState.bigBlind, gameState.players[name].chips);
-                            gameState.players[name].chips -= bbAmt;
-                            gameState.players[name].currentBet = bbAmt;
-                            gameState.pot += bbAmt;
+                        if(idx === data.sbIndex) {
+                            let sbAmt = Math.min(data.smallBlind, data.players[name].chips);
+                            data.players[name].chips -= sbAmt;
+                            data.players[name].currentBet = sbAmt;
+                            data.pot += sbAmt;
+                        } else if(idx === data.bbIndex) {
+                            let bbAmt = Math.min(data.bigBlind, data.players[name].chips);
+                            data.players[name].chips -= bbAmt;
+                            data.players[name].currentBet = bbAmt;
+                            data.pot += bbAmt;
                         }
                     }
                 }
@@ -791,76 +806,198 @@
 
             let safetyCount = 0;
             while(safetyCount < numPlayers) {
-                let currName = gameState.playerOrder[gameState.activeTurnIndex];
-                if(gameState.players[currName] && !gameState.players[currName].folded && !gameState.players[currName].sitOut) {
+                let currName = data.playerOrder[data.activeTurnIndex];
+                if(data.players[currName] && !data.players[currName].folded && !data.players[currName].sitOut) {
                     break;
                 }
-                gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % numPlayers;
+                data.activeTurnIndex = (data.activeTurnIndex + 1) % numPlayers;
                 safetyCount++;
             }
 
-            document.getElementById('start-game-btn').classList.add('hidden');
-            document.getElementById('deal-hand-btn').classList.remove('hidden');
-
-            await saveStateToFirebase();
+            await window.FB_set(roomRef, data);
         }
 
-        async function advanceStage() {
-            let deck = createFullDeck();
-            
-            gameState.playerOrder.forEach(name => {
-                if(gameState.players[name]) gameState.players[name].currentBet = 0;
-            });
-            gameState.currentBet = 0;
-            gameState.activeTurnIndex = (gameState.dealerIndex + 1) % gameState.playerOrder.length;
+        // 🟢 ฟังก์ชันส่ง Action ของผู้เล่น (ไม่ว่าใครกด ข้อมูลจะถูกดึงและอัปเดตลง Firebase โดยตรงทันที)
+        async function playerAction(type) {
+            const me = gameState.myPlayerName.trim();
+            if(!me) return;
 
-            let attempts = 0;
-            const numPlayers = gameState.playerOrder.length;
-            while(attempts < numPlayers) {
-                let currName = gameState.playerOrder[gameState.activeTurnIndex];
-                if(gameState.players[currName] && !gameState.players[currName].folded && !gameState.players[currName].sitOut) {
-                    break;
-                }
-                gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % numPlayers;
-                attempts++;
-            }
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
+            const snapshot = await window.FB_get(roomRef);
+            if(!snapshot.exists()) return;
+            let data = snapshot.val();
 
-            if(gameState.stage.includes('Pre-Flop')) {
-                gameState.stage = 'Flop';
-                gameState.communityCards = [deck.pop(), deck.pop(), deck.pop()];
-            } else if(gameState.stage.includes('Flop')) {
-                gameState.stage = 'Turn';
-                gameState.communityCards.push(deck.pop());
-            } else if(gameState.stage.includes('Turn')) {
-                gameState.stage = 'River';
-                gameState.communityCards.push(deck.pop());
-            }
-            
-            await saveStateToFirebase();
-        }
-
-        async function checkBettingRoundComplete() {
-            const activePlayers = gameState.playerOrder.filter(name => gameState.players[name] && !gameState.players[name].folded && !gameState.players[name].sitOut);
-            
-            if(activePlayers.length <= 1) {
-                await evaluateAndTriggerShowdown(activePlayers);
+            if(!data.players[me] || data.players[me].sitOut) {
+                alert("You are currently Sit Out or not seated.");
                 return;
             }
 
-            const allMatched = activePlayers.every(name => gameState.players[name].chips === 0 || gameState.players[name].currentBet === gameState.currentBet);
+            const currentTurnPlayer = (data.playerOrder[data.activeTurnIndex] || "").trim();
+            if(currentTurnPlayer !== me) {
+                alert(`It's not your turn yet! (Current turn: ${currentTurnPlayer}, Your name: ${me})`);
+                return;
+            }
 
-            if(allMatched) {
-                if(gameState.stage === 'River') {
-                    await evaluateAndTriggerShowdown(activePlayers);
+            if(data.players[me].folded) {
+                alert('You have already folded this hand.');
+                return;
+            }
+
+            if(type === 'fold') {
+                data.players[me].folded = true;
+            } else if(type === 'checkcall') {
+                const callCost = data.currentBet - data.players[me].currentBet;
+                if(callCost > 0) {
+                    if(data.players[me].chips >= callCost) {
+                        data.players[me].chips -= callCost;
+                        data.players[me].currentBet += callCost;
+                        data.pot += callCost;
+                    } else {
+                        data.pot += data.players[me].chips;
+                        data.players[me].currentBet += data.players[me].chips;
+                        data.players[me].chips = 0;
+                    }
+                }
+            } else if(type === 'raise') {
+                const amount = parseInt(document.getElementById('raise-amount').value) || 40;
+                const cost = amount - data.players[me].currentBet;
+                if(data.players[me].chips >= cost) {
+                    data.players[me].chips -= cost;
+                    data.players[me].currentBet = amount;
+                    data.pot += cost;
+                    data.currentBet = amount;
+                } else {
+                    alert('Insufficient chips');
                     return;
                 }
+            }
 
-                gameState.stage = gameState.stage + ' (Completing...)';
-                await saveStateToFirebase();
+            // เลื่อนตาเดินถัดไปทันที
+            data.activeTurnIndex = getNextActiveTurnIndex(data.playerOrder, data.players, data.activeTurnIndex);
 
-                setTimeout(async () => {
-                    await advanceStage();
-                }, 1500);
+            // เช็คว่าจบรอบหรือยัง
+            const activePlayers = data.playerOrder.filter(name => data.players[name] && !data.players[name].folded && !data.players[name].sitOut);
+            
+            if(activePlayers.length <= 1) {
+                await executeShowdown(data, roomRef, activePlayers);
+                return;
+            }
+
+            const allMatched = activePlayers.every(name => data.players[name].chips === 0 || data.players[name].currentBet === data.currentBet);
+
+            if(allMatched) {
+                if(data.stage === 'River') {
+                    await executeShowdown(data, roomRef, activePlayers);
+                    return;
+                } else {
+                    advanceStageData(data);
+                }
+            }
+
+            await window.FB_set(roomRef, data);
+        }
+
+        async function playerAllIn(name) {
+            const me = gameState.myPlayerName.trim();
+            if(me !== name.trim()) {
+                alert("You can only perform actions for your own account!");
+                return;
+            }
+
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
+            const snapshot = await window.FB_get(roomRef);
+            if(!snapshot.exists()) return;
+            let data = snapshot.val();
+
+            if(!data.players[me] || data.players[me].sitOut || data.players[me].folded) {
+                alert("Action not allowed.");
+                return;
+            }
+
+            const currentTurnPlayer = (data.playerOrder[data.activeTurnIndex] || "").trim();
+            if(currentTurnPlayer !== me) {
+                alert("It's not your turn yet!");
+                return;
+            }
+
+            const allInChips = data.players[me].chips;
+            if(allInChips <= 0) {
+                alert('You have no chips left to All-In!');
+                return;
+            }
+
+            data.pot += allInChips;
+            data.players[me].currentBet += allInChips;
+            data.players[me].chips = 0;
+
+            if(data.players[me].currentBet > data.currentBet) {
+                data.currentBet = data.players[me].currentBet;
+            }
+
+            data.activeTurnIndex = getNextActiveTurnIndex(data.playerOrder, data.players, data.activeTurnIndex);
+
+            const activePlayers = data.playerOrder.filter(n => data.players[n] && !data.players[n].folded && !data.players[n].sitOut);
+            if(activePlayers.length <= 1) {
+                await executeShowdown(data, roomRef, activePlayers);
+                return;
+            }
+
+            const allMatched = activePlayers.every(n => data.players[n].chips === 0 || data.players[n].currentBet === data.currentBet);
+            if(allMatched) {
+                if(data.stage === 'River') {
+                    await executeShowdown(data, roomRef, activePlayers);
+                    return;
+                } else {
+                    advanceStageData(data);
+                }
+            }
+
+            await window.FB_set(roomRef, data);
+        }
+
+        function getNextActiveTurnIndex(playerOrder, players, currentIndex) {
+            let nextIndex = currentIndex;
+            const numPlayers = playerOrder.length;
+            let attempts = 0;
+            do {
+                nextIndex = (nextIndex + 1) % numPlayers;
+                attempts++;
+                let pName = playerOrder[nextIndex];
+                if(players[pName] && !players[pName].folded && !players[pName].sitOut) {
+                    return nextIndex;
+                }
+            } while(attempts < numPlayers);
+            return currentIndex;
+        }
+
+        function advanceStageData(data) {
+            let deck = createFullDeck();
+            data.playerOrder.forEach(name => {
+                if(data.players[name]) data.players[name].currentBet = 0;
+            });
+            data.currentBet = 0;
+            
+            let firstTurn = (data.dealerIndex + 1) % data.playerOrder.length;
+            data.activeTurnIndex = firstTurn;
+            let attempts = 0;
+            while(attempts < data.playerOrder.length) {
+                let currName = data.playerOrder[data.activeTurnIndex];
+                if(data.players[currName] && !data.players[currName].folded && !data.players[currName].sitOut) {
+                    break;
+                }
+                data.activeTurnIndex = (data.activeTurnIndex + 1) % data.playerOrder.length;
+                attempts++;
+            }
+
+            if(data.stage.includes('Pre-Flop')) {
+                data.stage = 'Flop';
+                data.communityCards = [deck.pop(), deck.pop(), deck.pop()];
+            } else if(data.stage.includes('Flop')) {
+                data.stage = 'Turn';
+                data.communityCards.push(deck.pop());
+            } else if(data.stage.includes('Turn')) {
+                data.stage = 'River';
+                data.communityCards.push(deck.pop());
             }
         }
 
@@ -913,12 +1050,12 @@
             return { score: parsed[0].val, name: "High Card" };
         }
 
-        async function evaluateAndTriggerShowdown(activePlayers) {
-            gameState.stage = 'Showdown';
+        async function executeShowdown(data, roomRef, activePlayers) {
+            data.stage = 'Showdown';
 
             let evaluated = activePlayers.map(name => {
-                let p = gameState.players[name];
-                let res = evaluateHand(p.holeCards, gameState.communityCards);
+                let p = data.players[name];
+                let res = evaluateHand(p.holeCards, data.communityCards);
                 return { name, score: res.score, nameDesc: res.name };
             });
 
@@ -927,136 +1064,92 @@
                 let bestScore = evaluated[0].score;
                 let winners = evaluated.filter(e => e.score === bestScore).map(e => e.name);
 
-                const share = Math.floor(gameState.pot / winners.length);
+                const share = Math.floor(data.pot / winners.length);
                 winners.forEach(wName => {
-                    if(gameState.players[wName]) {
-                        gameState.players[wName].chips += share;
+                    if(data.players[wName]) {
+                        data.players[wName].chips += share;
                     }
                 });
 
                 activePlayers.forEach(name => {
                     let ev = evaluated.find(e => e.name === name);
                     let isWin = winners.includes(name);
-                    if(ev) gameState.players[name].resultText = `${ev.nameDesc} ${isWin ? '👑 (WINNER!)' : ''}`;
+                    if(ev) data.players[name].resultText = `${ev.nameDesc} ${isWin ? '👑 (WINNER!)' : ''}`;
                 });
             }
 
-            gameState.pot = 0;
-            await saveStateToFirebase();
+            data.pot = 0;
+            await window.FB_set(roomRef, data);
 
-            // หน่วงเวลา 5 วินาทีให้ทุกคนเห็นไพ่ แล้วให้ Host ทำการรันมือใหม่ให้อัตโนมัติทันที
-            if(gameState.isHost) {
-                setTimeout(async () => {
-                    await startNewHand();
-                }, 5000);
-            }
-        }
-
-        async function playerAction(type) {
-            const me = gameState.myPlayerName.trim();
-            if(!me || !gameState.players[me]) return;
-            if(gameState.players[me].sitOut) {
-                alert("You are currently Sit Out. Click 'Sit In' to play.");
-                return;
-            }
-            
-            const currentTurnPlayer = (gameState.playerOrder[gameState.activeTurnIndex] || "").trim();
-            if(currentTurnPlayer !== me) {
-                alert(`It's not your turn yet! (Current turn: ${currentTurnPlayer}, Your name: ${me})`);
-                return;
-            }
-
-            if(gameState.players[me].folded) {
-                alert('You have already folded this hand.');
-                return;
-            }
-
-            if(type === 'fold') {
-                gameState.players[me].folded = true;
-            } else if(type === 'checkcall') {
-                const callCost = gameState.currentBet - gameState.players[me].currentBet;
-                if(callCost > 0) {
-                    if(gameState.players[me].chips >= callCost) {
-                        gameState.players[me].chips -= callCost;
-                        gameState.players[me].currentBet += callCost;
-                        gameState.pot += callCost;
-                    } else {
-                        gameState.pot += gameState.players[me].chips;
-                        gameState.players[me].currentBet += gameState.players[me].chips;
-                        gameState.players[me].chips = 0;
+            // หน่วงเวลา 5 วินาทีแล้วให้รันมือใหม่ให้อัตโนมัติ
+            setTimeout(async () => {
+                const freshSnapshot = await window.FB_get(roomRef);
+                if(freshSnapshot.exists()) {
+                    let freshData = freshSnapshot.val();
+                    if(freshData.stage === 'Showdown') {
+                        // สั่งเริ่มมือใหม่
+                        triggerAutoNextHand(roomRef);
                     }
                 }
-            } else if(type === 'raise') {
-                const amount = parseInt(document.getElementById('raise-amount').value) || 40;
-                const cost = amount - gameState.players[me].currentBet;
-                if(gameState.players[me].chips >= cost) {
-                    gameState.players[me].chips -= cost;
-                    gameState.players[me].currentBet = amount;
-                    gameState.pot += cost;
-                    gameState.currentBet = amount;
-                } else {
-                    alert('Insufficient chips');
-                    return;
+            }, 5000);
+        }
+
+        async function triggerAutoNextHand(roomRef) {
+            const snapshot = await window.FB_get(roomRef);
+            if(!snapshot.exists()) return;
+            let data = snapshot.val();
+
+            const numPlayers = data.playerOrder.length;
+            data.dealerIndex = (data.dealerIndex + 1) % numPlayers;
+            data.sbIndex = (data.dealerIndex + 1) % numPlayers;
+            data.bbIndex = (data.dealerIndex + 2) % numPlayers;
+            data.activeTurnIndex = (data.bbIndex + 1) % numPlayers;
+
+            let deck = createFullDeck();
+            data.pot = 0;
+            data.currentBet = data.bigBlind;
+            data.stage = 'Pre-Flop';
+            data.communityCards = [];
+
+            data.playerOrder.forEach((name, idx) => {
+                if(data.players[name]) {
+                    const isSitOut = data.players[name].sitOut || false;
+                    if(isSitOut) {
+                        data.players[name].holeCards = [];
+                        data.players[name].folded = true;
+                        data.players[name].currentBet = 0;
+                    } else {
+                        data.players[name].holeCards = [deck.pop(), deck.pop()];
+                        data.players[name].folded = false;
+                        data.players[name].currentBet = 0;
+                        delete data.players[name].resultText;
+                        
+                        if(idx === data.sbIndex) {
+                            let sbAmt = Math.min(data.smallBlind, data.players[name].chips);
+                            data.players[name].chips -= sbAmt;
+                            data.players[name].currentBet = sbAmt;
+                            data.pot += sbAmt;
+                        } else if(idx === data.bbIndex) {
+                            let bbAmt = Math.min(data.bigBlind, data.players[name].chips);
+                            data.players[name].chips -= bbAmt;
+                            data.players[name].currentBet = bbAmt;
+                            data.pot += bbAmt;
+                        }
+                    }
                 }
-            }
+            });
 
-            advanceTurn();
-            await saveStateToFirebase();
-            await checkBettingRoundComplete();
-        }
-
-        async function playerAllIn(name) {
-            if(!gameState.players[name]) return;
-            if(gameState.players[name].sitOut) {
-                alert("Player is Sit Out.");
-                return;
-            }
-            const me = gameState.myPlayerName.trim();
-            if(me !== name.trim()) {
-                alert("You can only perform actions for your own account!");
-                return;
-            }
-            if(gameState.players[name].folded) {
-                alert('You have already folded this hand.');
-                return;
-            }
-
-            const currentTurnPlayer = (gameState.playerOrder[gameState.activeTurnIndex] || "").trim();
-            if(currentTurnPlayer !== name.trim()) {
-                alert("It's not your turn yet!");
-                return;
-            }
-
-            const allInChips = gameState.players[name].chips;
-            if(allInChips <= 0) {
-                alert('You have no chips left to All-In!');
-                return;
-            }
-
-            gameState.pot += allInChips;
-            gameState.players[name].currentBet += allInChips;
-            gameState.players[name].chips = 0;
-
-            if(gameState.players[name].currentBet > gameState.currentBet) {
-                gameState.currentBet = gameState.players[name].currentBet;
-            }
-
-            advanceTurn();
-            await saveStateToFirebase();
-            await checkBettingRoundComplete();
-        }
-
-        function advanceTurn() {
-            let attempts = 0;
-            const numPlayers = gameState.playerOrder.length;
-            do {
-                gameState.activeTurnIndex = (gameState.activeTurnIndex + 1) % numPlayers;
-                attempts++;
-                let pName = gameState.playerOrder[gameState.activeTurnIndex];
-                if(gameState.players[pName] && !gameState.players[pName].folded && !gameState.players[pName].sitOut) {
+            let safetyCount = 0;
+            while(safetyCount < numPlayers) {
+                let currName = data.playerOrder[data.activeTurnIndex];
+                if(data.players[currName] && !data.players[currName].folded && !data.players[currName].sitOut) {
                     break;
                 }
-            } while(attempts < numPlayers);
+                data.activeTurnIndex = (data.activeTurnIndex + 1) % numPlayers;
+                safetyCount++;
+            }
+
+            await window.FB_set(roomRef, data);
         }
 
         function renderGameTable() {
@@ -1070,7 +1163,7 @@
             if(gameState.stage === 'Waiting to Deal' || gameState.stage === 'Hand Ended') {
                 turnIndicator.innerText = `⏳ Waiting for Host to Start / Deal Hand`;
             } else if(gameState.stage === 'Showdown') {
-                turnIndicator.innerText = `🏆 SHOWDOWN! Revealing hands and dealing next hand shortly...`;
+                turnIndicator.innerText = `🏆 SHOWDOWN! Revealing hands & dealing next hand...`;
             } else {
                 turnIndicator.innerText = `👉 CURRENT TURN: ${currentTurnPlayer}`;
             }
@@ -1162,9 +1255,13 @@
                 return;
             }
             if(confirm(`Do you want to Re-Buy (+${gameState.buyIn} THB) for ${name}?`)) {
-                gameState.players[name].chips += gameState.buyIn;
-                gameState.players[name].totalBuyIn = (gameState.players[name].totalBuyIn || gameState.buyIn) + gameState.buyIn;
-                await saveStateToFirebase();
+                const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
+                const snapshot = await window.FB_get(roomRef);
+                if(!snapshot.exists()) return;
+                let data = snapshot.val();
+                data.players[name].chips += gameState.buyIn;
+                data.players[name].totalBuyIn = (data.players[name].totalBuyIn || gameState.buyIn) + gameState.buyIn;
+                await window.FB_set(roomRef, data);
             }
         }
 
