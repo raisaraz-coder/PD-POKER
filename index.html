@@ -27,7 +27,7 @@
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
             <div>
                 <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Virtual Table</h1>
-                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Casino Layout, Custom Blinds & Full Deck Shuffling</p>
+                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Casino Layout, Custom Blinds & Auto-Advance Turns</p>
             </div>
             <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
                 Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
@@ -109,7 +109,6 @@
                     <h3 class="text-sm font-bold text-emerald-400 hidden md:block" id="game-status-text">Table Active</h3>
                 </div>
                 <div class="flex items-center gap-2">
-                    <!-- Host Blind Adjuster Modal Trigger / Quick Panel -->
                     <div id="host-blind-controls" class="hidden items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700">
                         <span class="text-[10px] text-slate-400">SB/BB:</span>
                         <input type="number" id="quick-sb" class="w-12 bg-slate-900 border border-slate-600 rounded text-xs px-1 text-white text-center" value="10">
@@ -124,7 +123,6 @@
 
             <!-- Authentic Oval Poker Table Layout -->
             <div class="relative w-full h-[520px] bg-emerald-900 border-[10px] border-amber-950 rounded-[180px] shadow-2xl flex flex-col items-center justify-center p-4 my-2 overflow-hidden">
-                <!-- Inner felt ring graphic -->
                 <div class="absolute inset-4 border-2 border-emerald-700/60 rounded-[150px] pointer-events-none"></div>
 
                 <!-- Center Table Info: Pot, Stage, Community Cards -->
@@ -140,20 +138,19 @@
                         <span class="text-xs text-emerald-400/60 italic">(Waiting for deal)</span>
                     </div>
 
-                    <!-- Host Controls on Table Center -->
+                    <!-- Host Controls -->
                     <div id="dealer-controls" class="hidden flex flex-wrap justify-center gap-1.5 pt-1">
                         <button onclick="startNewHand()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] px-2.5 py-1.5 rounded-md shadow">🃏 Deal Hand</button>
-                        <button onclick="nextPokerStage()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-md shadow">➡️ Next Stage</button>
                         <button onclick="openAwardPotModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-md shadow">🏆 Award Pot</button>
                     </div>
                 </div>
 
-                <!-- Circular Seats Container (Up to 10 players rendered via absolute positioning) -->
+                <!-- Circular Seats Container -->
                 <div id="poker-seats-container" class="absolute inset-0 pointer-events-none">
                 </div>
             </div>
 
-            <!-- Player's Action Panel (Fixed Bottom Bar for current user action) -->
+            <!-- Player's Action Panel -->
             <div class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 flex flex-col md:flex-row items-center justify-between gap-3">
                 <div class="flex items-center gap-3">
                     <div>
@@ -201,7 +198,7 @@
 
                 <div class="flex gap-3 pt-2">
                     <button onclick="closeTableModalCancel()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-medium py-2.5 rounded-xl transition">Cancel</button>
-                    <button onclick="confirmFinalizeGame()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition shadow-lg">Confirm & Summarize</button>
+                    <button onclick="confirmFinalizeGame()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 rounded-xl transition shadow-lg">Confirm & Summarize</button>
                 </div>
             </div>
         </div>
@@ -319,14 +316,16 @@
             gameState.stage = 'Waiting to Deal';
             gameState.communityCards = [];
             gameState.playerOrder = [...tempPresetList];
-            gameState.dealerIndex = 0;
-            gameState.sbIndex = gameState.playerOrder.length > 1 ? 1 : 0;
-            gameState.bbIndex = gameState.playerOrder.length > 2 ? 2 : (gameState.playerOrder.length > 1 ? 1 : 0);
+            
+            // Randomize first dealer position
+            gameState.dealerIndex = Math.floor(Math.random() * gameState.playerOrder.length);
+            gameState.sbIndex = (gameState.dealerIndex + 1) % gameState.playerOrder.length;
+            gameState.bbIndex = (gameState.dealerIndex + 2) % gameState.playerOrder.length;
             gameState.activeTurnIndex = 0;
             
             gameState.players = {};
             tempPresetList.forEach(name => {
-                gameState.players[name] = { chips: buyInVal, totalBuyIn: buyInVal, holeCards: [], folded: false };
+                gameState.players[name] = { chips: buyInVal, totalBuyIn: buyInVal, holeCards: [], folded: false, currentBet: 0 };
             });
 
             saveStateToLocalStorage();
@@ -504,14 +503,17 @@
             gameState.playerOrder.forEach((name, idx) => {
                 gameState.players[name].holeCards = [deck.pop(), deck.pop()];
                 gameState.players[name].folded = false;
+                gameState.players[name].currentBet = 0;
                 
                 if(idx === gameState.sbIndex) {
                     let sbAmt = Math.min(gameState.smallBlind, gameState.players[name].chips);
                     gameState.players[name].chips -= sbAmt;
+                    gameState.players[name].currentBet = sbAmt;
                     gameState.pot += sbAmt;
                 } else if(idx === gameState.bbIndex) {
                     let bbAmt = Math.min(gameState.bigBlind, gameState.players[name].chips);
                     gameState.players[name].chips -= bbAmt;
+                    gameState.players[name].currentBet = bbAmt;
                     gameState.pot += bbAmt;
                 }
             });
@@ -520,27 +522,64 @@
             renderGameTable();
         }
 
-        function nextPokerStage() {
-            if(!gameState.isHost) return;
+        function advanceStage() {
             let deck = createFullDeck();
             
-            if(gameState.stage.includes('Pre-Flop')) {
+            // Reset player bets for the new round
+            gameState.playerOrder.forEach(name => {
+                gameState.players[name].currentBet = 0;
+            });
+            gameState.currentBet = 0;
+            gameState.activeTurnIndex = (gameState.dealerIndex + 1) % gameState.playerOrder.length;
+
+            if(gameState.stage === 'Pre-Flop') {
                 gameState.stage = 'Flop';
                 gameState.communityCards = [deck.pop(), deck.pop(), deck.pop()];
-            } else if(gameState.stage.includes('Flop')) {
+            } else if(gameState.stage === 'Flop') {
                 gameState.stage = 'Turn';
                 gameState.communityCards.push(deck.pop());
-            } else if(gameState.stage.includes('Turn')) {
+            } else if(gameState.stage === 'Turn') {
                 gameState.stage = 'River';
                 gameState.communityCards.push(deck.pop());
-            } else if(gameState.stage.includes('River')) {
+            } else if(gameState.stage === 'River') {
                 gameState.stage = 'Showdown';
             }
             
-            gameState.currentBet = 0;
-            gameState.activeTurnIndex = (gameState.dealerIndex + 1) % gameState.playerOrder.length;
             saveStateToLocalStorage();
             renderGameTable();
+        }
+
+        function checkBettingRoundComplete() {
+            const activePlayers = gameState.playerOrder.filter(name => !gameState.players[name].folded);
+            
+            // If only 1 player remains, hand ends immediately
+            if(activePlayers.length === 1) {
+                gameState.stage = 'Hand Ended';
+                saveStateToLocalStorage();
+                renderGameTable();
+                return;
+            }
+
+            // Check if all active players have matched the current bet
+            const allMatched = activePlayers.every(name => gameState.players[name].chips === 0 || gameState.players[name].currentBet === gameState.currentBet);
+
+            if(allMatched) {
+                if(gameState.stage === 'River' || gameState.stage === 'Showdown') {
+                    gameState.stage = 'Showdown';
+                    saveStateToLocalStorage();
+                    renderGameTable();
+                    return;
+                }
+
+                // Auto-advance with 3 seconds delay
+                gameState.stage = gameState.stage + ' (Completing...)';
+                saveStateToLocalStorage();
+                renderGameTable();
+
+                setTimeout(() => {
+                    advanceStage();
+                }, 3000);
+            }
         }
 
         function openAwardPotModal() {
@@ -600,19 +639,25 @@
             if(type === 'fold') {
                 gameState.players[me].folded = true;
             } else if(type === 'checkcall') {
-                const callCost = gameState.currentBet;
-                if(gameState.players[me].chips >= callCost) {
-                    gameState.players[me].chips -= callCost;
-                    gameState.pot += callCost;
-                } else {
-                    gameState.pot += gameState.players[me].chips;
-                    gameState.players[me].chips = 0;
+                const callCost = gameState.currentBet - gameState.players[me].currentBet;
+                if(callCost > 0) {
+                    if(gameState.players[me].chips >= callCost) {
+                        gameState.players[me].chips -= callCost;
+                        gameState.players[me].currentBet += callCost;
+                        gameState.pot += callCost;
+                    } else {
+                        gameState.pot += gameState.players[me].chips;
+                        gameState.players[me].currentBet += gameState.players[me].chips;
+                        gameState.players[me].chips = 0;
+                    }
                 }
             } else if(type === 'raise') {
                 const amount = parseInt(document.getElementById('raise-amount').value) || 40;
-                if(gameState.players[me].chips >= amount) {
-                    gameState.players[me].chips -= amount;
-                    gameState.pot += amount;
+                const cost = amount - gameState.players[me].currentBet;
+                if(gameState.players[me].chips >= cost) {
+                    gameState.players[me].chips -= cost;
+                    gameState.players[me].currentBet = amount;
+                    gameState.pot += cost;
                     gameState.currentBet = amount;
                 } else {
                     alert('Insufficient chips');
@@ -623,6 +668,7 @@
             advanceTurn();
             saveStateToLocalStorage();
             renderGameTable();
+            checkBettingRoundComplete();
         }
 
         function advanceTurn() {
@@ -640,7 +686,6 @@
             document.getElementById('table-pot').innerText = gameState.pot;
             document.getElementById('table-current-bet').innerText = gameState.currentBet;
 
-            // Community cards
             const ccDiv = document.getElementById('community-cards');
             if(gameState.communityCards.length === 0) {
                 ccDiv.innerHTML = `<span class="text-xs text-emerald-400/60 italic">(Waiting for deal)</span>`;
@@ -650,7 +695,6 @@
                 `).join('');
             }
 
-            // My hand bottom bar
             const myCardDiv = document.getElementById('my-hole-cards');
             const myData = gameState.players[gameState.myPlayerName];
             if(myData && myData.holeCards && myData.holeCards.length > 0) {
@@ -661,25 +705,21 @@
                 myCardDiv.innerHTML = `<span class="text-xs text-slate-500 italic">No cards dealt</span>`;
             }
 
-            // Render 10-Player Oval Circular Layout
             const seatsContainer = document.getElementById('poker-seats-container');
             const totalPlayers = gameState.playerOrder.length;
 
             seatsContainer.innerHTML = gameState.playerOrder.map((name, idx) => {
                 const p = gameState.players[name];
-                const isMyTurn = (idx === gameState.activeTurnIndex && gameState.stage !== 'Waiting to Deal' && gameState.stage !== 'Hand Ended');
+                const isMyTurn = (idx === gameState.activeTurnIndex && !gameState.stage.includes('Completing') && gameState.stage !== 'Waiting to Deal' && gameState.stage !== 'Hand Ended' && gameState.stage !== 'Showdown');
                 
                 let badges = [];
                 if(idx === gameState.dealerIndex) badges.push(`<span class="bg-blue-600 text-white text-[9px] px-1 py-0.5 rounded font-bold">D</span>`);
                 if(idx === gameState.sbIndex) badges.push(`<span class="bg-purple-600 text-white text-[9px] px-1 py-0.5 rounded font-bold">SB</span>`);
                 if(idx === gameState.bbIndex) badges.push(`<span class="bg-amber-600 text-white text-[9px] px-1 py-0.5 rounded font-bold">BB</span>`);
 
-                // Calculate elliptical coordinates (percentage based around the oval table)
-                // angle in radians around center
                 const angle = (idx / totalPlayers) * 2 * Math.PI - Math.PI / 2;
-                // Oval radiuses
-                const rx = 42; // horizontal radius %
-                const ry = 36; // vertical radius %
+                const rx = 42;
+                const ry = 36;
                 const x = 50 + rx * Math.cos(angle);
                 const y = 50 + ry * Math.sin(angle);
 
@@ -691,7 +731,7 @@
                                 <div class="flex gap-0.5">${badges.join('')}</div>
                             </div>
                             <div class="text-emerald-400 font-mono font-bold text-xs">${p.chips} ฿</div>
-                            <div class="text-[9px] text-slate-400">${p.folded ? '🔴 Folded' : `Buy: ${p.totalBuyIn}`}</div>
+                            <div class="text-[9px] text-slate-400">${p.folded ? '🔴 Folded' : `Bet: ${p.currentBet}`}</div>
                             
                             ${gameState.isHost || name === gameState.myPlayerName ? `
                                 <div class="flex gap-1 mt-1 w-full">
