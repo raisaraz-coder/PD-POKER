@@ -111,36 +111,36 @@
                     <button onclick="createRoom()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition shadow-lg">🚀 Launch Poker Table</button>
                 </div>
 
-                <!-- Join Panel -->
+                <!-- Join Panel (Updated flow: Input Room Code -> Load Database Names) -->
                 <div class="bg-slate-900/50 p-5 rounded-xl border border-slate-700 space-y-4 flex flex-col justify-between">
                     <div>
                         <h2 class="text-lg font-semibold text-emerald-400">🎮 Join Table</h2>
-                        <p class="text-xs text-slate-400 mb-4">Enter room code to select your name from database or join directly</p>
+                        <p class="text-xs text-slate-400 mb-4">Step 1: Enter room code to load room database</p>
                         <div class="space-y-3">
                             <div>
                                 <label class="block text-xs text-slate-400 mb-1">Room Code</label>
                                 <input type="text" id="join-room-code" placeholder="e.g. ROOM-XXXX" class="w-full uppercase bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-400 font-mono">
                             </div>
-                            <button onclick="loadRoomToJoin()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 rounded-lg transition">Find Room</button>
+                            <button onclick="loadRoomToJoin()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 rounded-lg transition">Step 2: Find Room & Load Players</button>
                         </div>
                         
-                        <!-- Join Selection Area -->
+                        <!-- Join Selection Area (Appears after room is loaded) -->
                         <div id="join-selection-area" class="mt-4 hidden space-y-3 bg-slate-800/80 p-3 rounded-xl border border-slate-700">
                             <div>
-                                <label class="block text-xs text-slate-400 mb-1">Select your name from Database:</label>
+                                <label class="block text-xs text-slate-400 mb-1">Step 3: Select your name from Room Database:</label>
                                 <select id="join-name-select" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-400">
                                 </select>
                             </div>
-                            <div class="text-center text-[10px] text-slate-500">- OR TYPE NEW NAME -</div>
+                            <div class="text-center text-[10px] text-slate-500">- OR ADD NEW NAME TO TABLE -</div>
                             <div class="flex gap-2">
-                                <input type="text" id="join-custom-name" placeholder="Type your name..." class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-emerald-400">
-                                <button onclick="joinWithCustomName()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg">Use Name</button>
+                                <input type="text" id="join-custom-name" placeholder="Type new name..." class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-emerald-400">
+                                <button onclick="joinWithCustomName()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg">Add & Enter</button>
                             </div>
                             <div class="flex items-center gap-2 pt-1">
                                 <input type="checkbox" id="join-as-host-check" class="w-4 h-4 rounded bg-slate-800 border-slate-600 text-emerald-500 focus:ring-emerald-400">
                                 <label for="join-as-host-check" class="text-xs text-amber-300 font-medium">I am the Host (Table Controller)</label>
                             </div>
-                            <button onclick="joinGameAsPlayer()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-lg transition shadow-md">Enter Table</button>
+                            <button onclick="joinGameAsPlayer()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-lg transition shadow-md">🚀 Enter Table</button>
                         </div>
                     </div>
                 </div>
@@ -312,7 +312,6 @@
             const roomParam = urlParams.get('room');
             if(roomParam) {
                 document.getElementById('join-room-code').value = roomParam;
-                document.getElementById('host-setup-panel').classList.add('hidden');
                 loadRoomToJoin();
             }
         });
@@ -489,7 +488,10 @@
 
         async function loadRoomToJoin() {
             const code = document.getElementById('join-room-code').value.trim().toUpperCase();
-            if(!code) return;
+            if(!code) {
+                alert('Please enter room code first.');
+                return;
+            }
 
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + code);
             const snapshot = await window.FB_get(roomRef);
@@ -517,10 +519,10 @@
             gameState.activeTurnIndex = data.activeTurnIndex || 0;
 
             const select = document.getElementById('join-name-select');
-            let allNamesSet = new Set([...Object.keys(gameState.players), ...savedPresets]);
-            select.innerHTML = Array.from(allNamesSet).map(name => `<option value="${name}">${name}</option>`).join('');
+            select.innerHTML = gameState.playerOrder.map(name => `<option value="${name}">${name}</option>`).join('');
             
             document.getElementById('join-selection-area').classList.remove('hidden');
+            alert('Room found! Please select your name below to enter.');
         }
 
         async function joinWithCustomName() {
@@ -547,18 +549,15 @@
         async function joinGameAsPlayer() {
             const select = document.getElementById('join-name-select');
             const name = select.value;
-            if(!name) return;
+            if(!name) {
+                alert('Please select your name.');
+                return;
+            }
 
             gameState.myPlayerName = name;
             const isHostChecked = document.getElementById('join-as-host-check').checked;
             if(isHostChecked) {
                 gameState.isHost = true;
-            }
-
-            if(!gameState.players[name]) {
-                gameState.playerOrder.push(name);
-                gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn, holeCards: [], folded: true, currentBet: 0 };
-                await saveStateToFirebase();
             }
 
             enterGameView();
@@ -582,7 +581,7 @@
             if(gameState.isHost) {
                 document.getElementById('host-close-btn').classList.remove('hidden');
                 document.getElementById('dealer-controls').classList.remove('hidden');
-                document.getElementById('host-blind-controls').classList.remove('flex');
+                document.getElementById('host-blind-controls').classList.remove('hidden');
                 document.getElementById('host-blind-controls').classList.add('flex');
                 document.getElementById('host-add-player-box').classList.remove('hidden');
                 document.getElementById('host-add-player-box').classList.add('flex');
@@ -1008,7 +1007,6 @@
                     `;
                 }
 
-                // เงื่อนไข Re-Buy: กดได้เฉพาะตอนเงินเหลือ 0 เท่านั้น
                 const canReBuy = (p.chips === 0);
 
                 return `
@@ -1022,7 +1020,6 @@
                             <div class="text-[9px] text-slate-400">${p.folded ? '🔴 Folded' : `Bet: ${p.currentBet}`}</div>
                             ${showdownCardHtml}
                             
-                            <!-- Action buttons: Re-Buy (Locked when chips > 0) & All-In -->
                             <div class="flex gap-1 mt-1.5 w-full">
                                 <button onclick="selfReBuy('${name}')" ${!canReBuy ? 'disabled' : ''} class="text-[9px] px-1.5 py-1 rounded text-white font-bold w-1/2 shadow transition ${canReBuy ? 'bg-amber-600 hover:bg-amber-500 cursor-pointer' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}">💰 Re-Buy</button>
                                 <button onclick="playerAllIn('${name}')" class="bg-rose-600 hover:bg-rose-500 text-[9px] px-1.5 py-1 rounded text-white font-bold w-1/2 shadow transition">🔥 All-In</button>
