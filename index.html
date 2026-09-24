@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Poker Cash Game & Auto-Showdown</title>
+    <title>Poker Cash Game & Self-Select Join</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Firebase SDK (Modular v10) -->
@@ -53,8 +53,8 @@
         <!-- Header -->
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
             <div>
-                <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Auto-Showdown</h1>
-                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Cloud Presets & Fully Automated Flow</p>
+                <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Self-Select Join</h1>
+                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Cloud Presets & Direct Self-Join</p>
             </div>
             <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
                 Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
@@ -115,7 +115,7 @@
                 <div class="bg-slate-900/50 p-5 rounded-xl border border-slate-700 space-y-4 flex flex-col justify-between">
                     <div>
                         <h2 class="text-lg font-semibold text-emerald-400">🎮 Join Table</h2>
-                        <p class="text-xs text-slate-400 mb-4">Enter room code or use invite link to select your player identity</p>
+                        <p class="text-xs text-slate-400 mb-4">Enter room code to select your name from database or join directly</p>
                         <div class="space-y-3">
                             <div>
                                 <label class="block text-xs text-slate-400 mb-1">Room Code</label>
@@ -123,15 +123,24 @@
                             </div>
                             <button onclick="loadRoomToJoin()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 rounded-lg transition">Find Room</button>
                         </div>
-                        <div id="join-selection-area" class="mt-4 hidden space-y-3">
-                            <label class="block text-xs text-slate-400">Select your name:</label>
-                            <select id="join-name-select" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-400">
-                            </select>
+                        
+                        <!-- Join Selection Area (Loads Cloud Presets directly) -->
+                        <div id="join-selection-area" class="mt-4 hidden space-y-3 bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Select your name from Database:</label>
+                                <select id="join-name-select" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-400">
+                                </select>
+                            </div>
+                            <div class="text-center text-[10px] text-slate-500">- OR TYPE NEW NAME -</div>
+                            <div class="flex gap-2">
+                                <input type="text" id="join-custom-name" placeholder="Type your name..." class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-emerald-400">
+                                <button onclick="joinWithCustomName()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg">Use Name</button>
+                            </div>
                             <div class="flex items-center gap-2 pt-1">
                                 <input type="checkbox" id="join-as-host-check" class="w-4 h-4 rounded bg-slate-800 border-slate-600 text-emerald-500 focus:ring-emerald-400">
                                 <label for="join-as-host-check" class="text-xs text-amber-300 font-medium">I am the Host (Table Controller)</label>
                             </div>
-                            <button onclick="joinGameAsPlayer()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg transition">Enter Table</button>
+                            <button onclick="joinGameAsPlayer()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-lg transition shadow-md">Enter Table</button>
                         </div>
                     </div>
                 </div>
@@ -507,19 +516,53 @@
             gameState.bbIndex = data.bbIndex || 0;
             gameState.activeTurnIndex = data.activeTurnIndex || 0;
 
+            // ดึงรายชื่อทั้งหมดจาก Cloud Presets มาให้เลือกทันที (รวมถึงคนที่มีอยู่ในห้องแล้วและคนใน Database)
             const select = document.getElementById('join-name-select');
-            select.innerHTML = Object.keys(gameState.players).map(name => `<option value="${name}">${name}</option>`).join('');
+            let allNamesSet = new Set([...Object.keys(gameState.players), ...savedPresets]);
+            select.innerHTML = Array.from(allNamesSet).map(name => `<option value="${name}">${name}</option>`).join('');
             
             document.getElementById('join-selection-area').classList.remove('hidden');
         }
 
-        function joinGameAsPlayer() {
+        async function joinWithCustomName() {
+            const customInput = document.getElementById('join-custom-name');
+            const name = customInput.value.trim();
+            if(!name) return;
+
+            // บันทึกลง Cloud Presets อัตโนมัติถ้ายังไม่มี
+            if(!savedPresets.includes(name)) {
+                savedPresets.push(name);
+                await savePresetsToCloud();
+            }
+
+            // เพิ่มเข้าห้องทันทีถ้ายังไม่มีใน room
+            if(!gameState.players[name]) {
+                gameState.playerOrder.push(name);
+                gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn, holeCards: [], folded: true, currentBet: 0 };
+                await saveStateToFirebase();
+            }
+
+            gameState.myPlayerName = name;
+            customInput.value = '';
+            enterGameView();
+        }
+
+        async function joinGameAsPlayer() {
             const select = document.getElementById('join-name-select');
-            gameState.myPlayerName = select.value;
+            const name = select.value;
+            if(!name) return;
+
+            gameState.myPlayerName = name;
             const isHostChecked = document.getElementById('join-as-host-check').checked;
-            
             if(isHostChecked) {
                 gameState.isHost = true;
+            }
+
+            // ถ้าเลือกชื่อจาก dropdown แล้วยังไม่มีอยู่ใน players ของห้อง ให้เพิ่มเข้าไปทันที
+            if(!gameState.players[name]) {
+                gameState.playerOrder.push(name);
+                gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn, holeCards: [], folded: true, currentBet: 0 };
+                await saveStateToFirebase();
             }
 
             enterGameView();
@@ -705,7 +748,6 @@
             if(!gameState.isHost) return;
             const activePlayers = gameState.playerOrder.filter(name => gameState.players[name] && !gameState.players[name].folded);
             
-            // ถ้าเหลือคนสู้คนเดียว (คนอื่นหมอบหมด) ให้ตัดเข้า Showdown ทันที
             if(activePlayers.length === 1) {
                 await triggerAutoShowdownAndNext(activePlayers);
                 return;
@@ -715,7 +757,6 @@
 
             if(allMatched) {
                 if(gameState.stage === 'River') {
-                    // ครบทุกรอบแล้ว เข้าสู่ Auto Showdown ทันที
                     await triggerAutoShowdownAndNext(activePlayers);
                     return;
                 }
@@ -732,7 +773,6 @@
         async function triggerAutoShowdownAndNext(activePlayers) {
             gameState.stage = 'Showdown';
             
-            // แบ่ง Pot ให้ผู้เล่นที่เหลืออยู่เฉลี่ยเท่าๆ กัน
             const share = Math.floor(gameState.pot / activePlayers.length);
             activePlayers.forEach(name => {
                 if(gameState.players[name]) {
@@ -740,11 +780,9 @@
                 }
             });
             
-            const wonPot = gameState.pot;
             gameState.pot = 0;
             await saveStateToFirebase();
 
-            // หน่วงเวลา 4 วินาทีเพื่อให้ทุกคนดูไพ่และผลลัพธ์บนโต๊ะ จากนั้นรันตาใหม่ให้อัตโนมัติ
             setTimeout(async () => {
                 await startNewHand();
             }, 4000);
