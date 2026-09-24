@@ -82,7 +82,7 @@
                         </div>
                     </div>
                     <div>
-                        <label class="block text-xs text-slate-400 mb-1">Add New Player Name (Saved to Cloud)</label>
+                        <label class="block text-xs text-slate-400 mb-1">Add New Player Name (Saved permanently to Cloud)</label>
                         <div class="flex gap-2">
                             <input type="text" id="setup-player-name" placeholder="Enter player name..." class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400">
                             <button onclick="addNewPlayerPreset()" class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition">Save & Add</button>
@@ -92,7 +92,7 @@
                     <!-- Cloud Saved Player Tiles Selector -->
                     <div>
                         <div class="flex justify-between items-center mb-1">
-                            <span class="text-xs text-slate-400">Select players for this table (Cloud Saved):</span>
+                            <span class="text-xs text-slate-400">Select players for this table (from Cloud Save):</span>
                             <button onclick="clearAllPresets()" class="text-[10px] text-rose-400 hover:underline">Clear Cloud List</button>
                         </div>
                         <div id="saved-presets-tiles" class="flex flex-wrap gap-2 mt-1 min-h-[50px] p-2 bg-slate-800 rounded-lg border border-slate-700 items-center">
@@ -111,11 +111,11 @@
                     <button onclick="createRoom()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition shadow-lg">🚀 Launch Poker Table</button>
                 </div>
 
-                <!-- Join Panel (Updated flow: Input Room Code -> Load Database Names) -->
+                <!-- Join Panel -->
                 <div class="bg-slate-900/50 p-5 rounded-xl border border-slate-700 space-y-4 flex flex-col justify-between">
                     <div>
                         <h2 class="text-lg font-semibold text-emerald-400">🎮 Join Table</h2>
-                        <p class="text-xs text-slate-400 mb-4">Step 1: Enter room code to load room database</p>
+                        <p class="text-xs text-slate-400 mb-4">Step 1: Enter room code to load room table</p>
                         <div class="space-y-3">
                             <div>
                                 <label class="block text-xs text-slate-400 mb-1">Room Code</label>
@@ -127,14 +127,9 @@
                         <!-- Join Selection Area (Appears after room is loaded) -->
                         <div id="join-selection-area" class="mt-4 hidden space-y-3 bg-slate-800/80 p-3 rounded-xl border border-slate-700">
                             <div>
-                                <label class="block text-xs text-slate-400 mb-1">Step 3: Select your name from Room Database:</label>
+                                <label class="block text-xs text-slate-400 mb-1">Step 3: Select your name (Available slots):</label>
                                 <select id="join-name-select" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-400">
                                 </select>
-                            </div>
-                            <div class="text-center text-[10px] text-slate-500">- OR ADD NEW NAME TO TABLE -</div>
-                            <div class="flex gap-2">
-                                <input type="text" id="join-custom-name" placeholder="Type new name..." class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-emerald-400">
-                                <button onclick="joinWithCustomName()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg">Add & Enter</button>
                             </div>
                             <div class="flex items-center gap-2 pt-1">
                                 <input type="checkbox" id="join-as-host-check" class="w-4 h-4 rounded bg-slate-800 border-slate-600 text-emerald-500 focus:ring-emerald-400">
@@ -518,39 +513,48 @@
             gameState.bbIndex = data.bbIndex || 0;
             gameState.activeTurnIndex = data.activeTurnIndex || 0;
 
-            const select = document.getElementById('join-name-select');
-            select.innerHTML = gameState.playerOrder.map(name => `<option value="${name}">${name}</option>`).join('');
+            // กรองเฉพาะชื่อที่ยังไม่มีคนเลือกเข้าโต๊ะไปแล้ว (เช็คจากว่าชื่อนั้นถูกกด Enter Table หรือยัง หรือคอยดูสถานะรายชื่อใน room)
+            // โดยดูว่าชื่อไหนมีอยู่ใน gameState.players แล้วบ้าง หากมีแล้วจะไม่แสดงใน Dropdown เพื่อไม่ให้เลือกซ้ำ
+            const availablePlayers = gameState.playerOrder.filter(name => {
+                // ถ้ามีชื่อนี้อยู่ในห้องแล้ว แต่ยังไม่ได้เข้าเล่น (หรือให้แสดงเฉพาะชื่อที่ยังไม่ถูกกดเลือก)
+                // เพื่อให้เห็นภาพชัดเจน เรากรองชื่อที่ถูกกดเข้าเล่นไปแล้วออก หรือเช็คสถานะการเข้าเล่น
+                return true; 
+            });
+
+            updateJoinDropdownOptions();
             
             document.getElementById('join-selection-area').classList.remove('hidden');
             alert('Room found! Please select your name below to enter.');
         }
 
-        async function joinWithCustomName() {
-            const customInput = document.getElementById('join-custom-name');
-            const name = customInput.value.trim();
-            if(!name) return;
+        // ฟังก์ชันอัปเดต Dropdown ฝั่ง Join โดยซ่อนชื่อที่มีคนกดเลือกเข้าเล่นไปแล้ว
+        function updateJoinDropdownOptions() {
+            const select = document.getElementById('join-name-select');
+            
+            // เช็คว่ามีใครถูกเลือกไปแล้วบ้าง โดยดูจากข้อมูลในฐานข้อมูลปัจจุบัน
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
+            window.FB_get(roomRef).then(snapshot => {
+                if(snapshot.exists()) {
+                    const data = snapshot.val();
+                    const playersData = data.players || {};
+                    const activeJoinedNames = data.joinedNames || []; // รายชื่อคนที่กดเลือกเข้าห้องไปแล้ว
 
-            if(!savedPresets.includes(name)) {
-                savedPresets.push(name);
-                await savePresetsToCloud();
-            }
+                    const availableNames = gameState.playerOrder.filter(name => !activeJoinedNames.includes(name));
 
-            if(!gameState.players[name]) {
-                gameState.playerOrder.push(name);
-                gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn, holeCards: [], folded: true, currentBet: 0 };
-                await saveStateToFirebase();
-            }
-
-            gameState.myPlayerName = name;
-            customInput.value = '';
-            enterGameView();
+                    if(availableNames.length === 0) {
+                        select.innerHTML = `<option value="">-- All player slots are taken --</option>`;
+                    } else {
+                        select.innerHTML = availableNames.map(name => `<option value="${name}">${name}</option>`).join('');
+                    }
+                }
+            });
         }
 
         async function joinGameAsPlayer() {
             const select = document.getElementById('join-name-select');
             const name = select.value;
             if(!name) {
-                alert('Please select your name.');
+                alert('Please select your valid name.');
                 return;
             }
 
@@ -558,6 +562,18 @@
             const isHostChecked = document.getElementById('join-as-host-check').checked;
             if(isHostChecked) {
                 gameState.isHost = true;
+            }
+
+            // บันทึกว่าชื่อนี้ถูกเลือกเข้าเล่นห้องนี้แล้ว เพื่อป้องกันคนอื่นเลือกชื่อซ้ำ
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
+            const snapshot = await window.FB_get(roomRef);
+            if(snapshot.exists()) {
+                let data = snapshot.val();
+                if(!data.joinedNames) data.joinedNames = [];
+                if(!data.joinedNames.includes(name)) {
+                    data.joinedNames.push(name);
+                    await window.FB_set(roomRef, data);
+                }
             }
 
             enterGameView();
@@ -627,6 +643,13 @@
         }
 
         async function saveStateToFirebase() {
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
+            const snapshot = await window.FB_get(roomRef);
+            let existingJoinedNames = [];
+            if(snapshot.exists() && snapshot.val().joinedNames) {
+                existingJoinedNames = snapshot.val().joinedNames;
+            }
+
             const data = {
                 buyIn: gameState.buyIn,
                 smallBlind: gameState.smallBlind,
@@ -641,9 +664,9 @@
                 sbIndex: gameState.sbIndex,
                 bbIndex: gameState.bbIndex,
                 activeTurnIndex: gameState.activeTurnIndex,
-                players: gameState.players
+                players: gameState.players,
+                joinedNames: existingJoinedNames
             };
-            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
             await window.FB_set(roomRef, data);
         }
 
