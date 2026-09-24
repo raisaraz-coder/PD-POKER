@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Poker Cash Game & Cloud Presets</title>
+    <title>Poker Cash Game & Auto-Showdown</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Firebase SDK (Modular v10) -->
@@ -53,8 +53,8 @@
         <!-- Header -->
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
             <div>
-                <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Cloud Presets</h1>
-                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Casino Layout, Cloud Saved Names & Auto Showdown</p>
+                <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Auto-Showdown</h1>
+                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Cloud Presets & Fully Automated Flow</p>
             </div>
             <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
                 Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
@@ -193,7 +193,6 @@
                     <div id="dealer-controls" class="hidden flex flex-wrap justify-center gap-1.5 pt-1">
                         <button onclick="startNewHand()" id="start-game-btn" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-md shadow">🚀 Start Game</button>
                         <button onclick="startNewHand()" id="deal-hand-btn" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-2.5 py-1.5 rounded-md shadow hidden">🃏 Deal Hand</button>
-                        <button onclick="openAwardPotModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3 py-1.5 rounded-md shadow">🏆 Award Pot</button>
                     </div>
                 </div>
 
@@ -219,22 +218,6 @@
                         <input type="number" id="raise-amount" value="40" class="w-16 bg-slate-800 border border-slate-600 rounded text-xs px-2 py-2 text-white text-right">
                         <button onclick="playerAction('raise')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3.5 py-2.5 rounded-lg transition">Raise / Bet</button>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Modal: Award Pot Checkbox Selection -->
-        <div id="modal-award-pot" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-            <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
-                <h3 class="text-lg font-bold text-amber-400">🏆 Award Pot Winner</h3>
-                <p class="text-xs text-slate-400">Select the winner(s) to receive the current Pot (<span id="award-pot-amount" class="text-emerald-400 font-bold">0</span> THB):</p>
-                
-                <div id="award-winners-list" class="space-y-2 max-h-48 overflow-y-auto my-2">
-                </div>
-
-                <div class="flex gap-3 pt-2">
-                    <button onclick="closeAwardPotModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium py-2.5 rounded-xl transition">Cancel</button>
-                    <button onclick="confirmAwardPot()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 rounded-xl transition shadow-lg">Confirm Winner</button>
                 </div>
             </div>
         </div>
@@ -669,6 +652,9 @@
             gameState.communityCards = [];
 
             gameState.playerOrder.forEach((name, idx) => {
+                if(!gameState.players[name]) {
+                    gameState.players[name] = { chips: gameState.buyIn, totalBuyIn: gameState.buyIn };
+                }
                 gameState.players[name].holeCards = [deck.pop(), deck.pop()];
                 gameState.players[name].folded = false;
                 gameState.players[name].currentBet = 0;
@@ -710,8 +696,6 @@
             } else if(gameState.stage.includes('Turn')) {
                 gameState.stage = 'River';
                 gameState.communityCards.push(deck.pop());
-            } else if(gameState.stage.includes('River') || gameState.stage.includes('Showdown')) {
-                gameState.stage = 'Showdown';
             }
             
             await saveStateToFirebase();
@@ -721,9 +705,9 @@
             if(!gameState.isHost) return;
             const activePlayers = gameState.playerOrder.filter(name => gameState.players[name] && !gameState.players[name].folded);
             
+            // ถ้าเหลือคนสู้คนเดียว (คนอื่นหมอบหมด) ให้ตัดเข้า Showdown ทันที
             if(activePlayers.length === 1) {
-                gameState.stage = 'Showdown';
-                await saveStateToFirebase();
+                await triggerAutoShowdownAndNext(activePlayers);
                 return;
             }
 
@@ -731,8 +715,8 @@
 
             if(allMatched) {
                 if(gameState.stage === 'River') {
-                    gameState.stage = 'Showdown';
-                    await saveStateToFirebase();
+                    // ครบทุกรอบแล้ว เข้าสู่ Auto Showdown ทันที
+                    await triggerAutoShowdownAndNext(activePlayers);
                     return;
                 }
 
@@ -741,47 +725,29 @@
 
                 setTimeout(async () => {
                     await advanceStage();
-                }, 3000);
+                }, 2000);
             }
         }
 
-        function openAwardPotModal() {
-            const container = document.getElementById('award-winners-list');
-            document.getElementById('award-pot-amount').innerText = gameState.pot;
-            container.innerHTML = gameState.playerOrder.map(name => `
-                <label class="flex items-center justify-between bg-slate-900/60 p-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-900">
-                    <span class="font-bold text-white text-sm">${name}</span>
-                    <input type="checkbox" name="pot-winner" value="${name}" class="w-4 h-4 rounded bg-slate-800 border-slate-600 text-amber-500 focus:ring-amber-400">
-                </label>
-            `).join('');
-            document.getElementById('modal-award-pot').classList.remove('hidden');
-        }
-
-        function closeAwardPotModal() {
-            document.getElementById('modal-award-pot').classList.add('hidden');
-        }
-
-        async function confirmAwardPot() {
-            const checkboxes = document.querySelectorAll('input[name="pot-winner"]:checked');
-            if(checkboxes.length === 0) {
-                alert('Please select at least one winner');
-                return;
-            }
-            const winners = Array.from(checkboxes).map(cb => cb.value);
-            const share = Math.floor(gameState.pot / winners.length);
-
-            winners.forEach(wName => {
-                if(gameState.players[wName]) {
-                    gameState.players[wName].chips += share;
+        async function triggerAutoShowdownAndNext(activePlayers) {
+            gameState.stage = 'Showdown';
+            
+            // แบ่ง Pot ให้ผู้เล่นที่เหลืออยู่เฉลี่ยเท่าๆ กัน
+            const share = Math.floor(gameState.pot / activePlayers.length);
+            activePlayers.forEach(name => {
+                if(gameState.players[name]) {
+                    gameState.players[name].chips += share;
                 }
             });
-
-            alert(`Awarded ${gameState.pot} THB pot evenly to: ${winners.join(', ')}`);
-            gameState.pot = 0;
-            gameState.stage = 'Hand Ended';
-            closeAwardPotModal();
             
-            await startNewHand();
+            const wonPot = gameState.pot;
+            gameState.pot = 0;
+            await saveStateToFirebase();
+
+            // หน่วงเวลา 4 วินาทีเพื่อให้ทุกคนดูไพ่และผลลัพธ์บนโต๊ะ จากนั้นรันตาใหม่ให้อัตโนมัติ
+            setTimeout(async () => {
+                await startNewHand();
+            }, 4000);
         }
 
         async function playerAction(type) {
@@ -850,10 +816,11 @@
 
             const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex] || 'None';
             const turnIndicator = document.getElementById('center-turn-indicator');
+            
             if(gameState.stage === 'Waiting to Deal' || gameState.stage === 'Hand Ended') {
                 turnIndicator.innerText = `⏳ Waiting for Host to Start / Deal Hand`;
             } else if(gameState.stage === 'Showdown') {
-                turnIndicator.innerText = `🏆 SHOWDOWN! Reveal hands & award pot`;
+                turnIndicator.innerText = `🏆 SHOWDOWN! Awarding pot & starting next hand...`;
             } else {
                 turnIndicator.innerText = `👉 CURRENT TURN: ${currentTurnPlayer}`;
             }
@@ -897,14 +864,14 @@
 
                 let showdownCardHtml = '';
                 if(gameState.stage === 'Showdown' && p.holeCards && p.holeCards.length > 0 && !p.folded) {
-                    showdownCardHtml = `<div class="text-[10px] text-amber-300 font-bold mt-0.5">Cards: ${p.holeCards.join(' ')}</div>`;
+                    showdownCardHtml = `<div class="text-[11px] text-amber-300 font-bold mt-1 bg-black/40 px-2 py-0.5 rounded">🃏 ${p.holeCards.join(' ')}</div>`;
                 }
 
                 return `
                     <div class="absolute pointer-events-auto transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300" style="left: ${x}%; top: ${y}%;">
-                        <div class="bg-slate-900/95 border ${isMyTurn ? 'active-turn border-amber-400 ring-2 ring-amber-400/70' : (name === gameState.myPlayerName ? 'border-emerald-500' : 'border-slate-700')} rounded-xl p-2 w-32 flex flex-col items-center shadow-xl">
+                        <div class="bg-slate-900/95 border ${isMyTurn ? 'active-turn border-amber-400 ring-2 ring-amber-400/70' : (name === gameState.myPlayerName ? 'border-emerald-500' : 'border-slate-700')} rounded-xl p-2.5 w-36 flex flex-col items-center shadow-xl">
                             <div class="flex items-center justify-between w-full text-[11px] mb-0.5">
-                                <span class="font-bold text-white truncate max-w-[70px]" title="${name}">${name}</span>
+                                <span class="font-bold text-white truncate max-w-[80px]" title="${name}">${name}</span>
                                 <div class="flex gap-0.5">${badges.join('')}</div>
                             </div>
                             <div class="text-emerald-400 font-mono font-bold text-xs">${p.chips} ฿</div>
@@ -912,7 +879,7 @@
                             ${showdownCardHtml}
                             
                             ${gameState.isHost || name === gameState.myPlayerName ? `
-                                <div class="flex gap-1 mt-1 w-full">
+                                <div class="flex gap-1 mt-1.5 w-full">
                                     <button onclick="adjustChips('${name}', 100)" class="bg-slate-800 hover:bg-slate-700 text-[9px] px-1.5 py-0.5 rounded text-white flex-1">+100</button>
                                     <button onclick="reBuy('${name}')" class="bg-amber-600 hover:bg-amber-500 text-[9px] px-1.5 py-0.5 rounded text-white font-medium">Re</button>
                                 </div>
