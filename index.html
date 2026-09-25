@@ -50,18 +50,12 @@
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center justify-start p-2 md:p-4 pb-24">
 
-    <!-- In-app Browser Warning Banner -->
-    <div id="inapp-browser-banner" class="hidden w-full max-w-6xl bg-amber-600/90 text-white text-xs px-4 py-2 rounded-xl mb-2 flex justify-between items-center shadow-lg">
-        <span>⚠️ คุณกำลังเปิดผ่านเบราว์เซอร์จำลองของแอปแชท แนะนำให้เปิดผ่าน Safari หรือ Chrome เพื่อความเสถียรสูงสุด</span>
-        <button onclick="openInExternalBrowser()" class="bg-white text-amber-900 font-bold px-3 py-1 rounded-lg text-[11px] shadow">เปิดในเบราว์เซอร์หลัก ↗</button>
-    </div>
-
     <div class="w-full max-w-6xl bg-slate-800 rounded-2xl shadow-2xl p-4 md:p-6 border border-slate-700 mt-2">
         <!-- Header -->
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
             <div>
                 <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Hand Evaluator</h1>
-                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Strict Ready Flow & Robust Hand Evaluation</p>
+                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Robust Turn Management & Fixed Betting Rounds</p>
             </div>
             <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
                 Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
@@ -208,11 +202,11 @@
                     </div>
                 </div>
                 <div class="flex flex-wrap gap-2 items-center w-full md:w-auto justify-end">
-                    <button onclick="playerAction('fold')" class="bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-lg transition">Fold</button>
-                    <button onclick="playerAction('checkcall')" class="bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-lg transition">Check / Call</button>
+                    <button onclick="playerAction('fold')" class="bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-lg transition shadow">Fold</button>
+                    <button onclick="playerAction('checkcall')" class="bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-lg transition shadow">Check / Call</button>
                     <div class="flex items-center gap-1">
                         <input type="number" id="raise-amount" value="40" class="w-16 bg-slate-800 border border-slate-600 rounded text-xs px-2 py-2.5 text-white text-right focus:outline-none focus:border-amber-400">
-                        <button onclick="playerAction('raise')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3.5 py-2.5 rounded-lg transition">Raise / Bet</button>
+                        <button onclick="playerAction('raise')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3.5 py-2.5 rounded-lg transition shadow">Raise / Bet</button>
                     </div>
                 </div>
             </div>
@@ -343,7 +337,6 @@
                 if(data && data.playerOrder && !data.playerOrder.includes(name) && data.playerOrder.length < 10) {
                     data.playerOrder.push(name);
                     if(!data.players) data.players = {};
-                    // ผู้เล่นใหม่ที่เข้ามากลางเกม จะเริ่มต้นด้วย ready: false เพื่อรอพร้อมใน Hand ถัดไป
                     data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false, ready: false };
                 }
                 return data;
@@ -375,8 +368,8 @@
                     if(!data.playerOrder.includes(name)) data.playerOrder.push(name);
                     if(!data.players) data.players = {};
                     if(!data.players[name]) {
-                        // ผู้เล่นใหม่ตั้งค่า ready: false เพื่อรอให้กดพร้อม
-                        data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false, ready: false };
+                        const isRunning = (data.stage !== 'Waiting to Deal' && data.stage !== 'Showdown' && data.stage !== 'Hand Ended');
+                        data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false, ready: !isRunning };
                     }
                 }
                 return data;
@@ -416,7 +409,6 @@
                     const currentReady = data.players[me].ready || false;
                     data.players[me].ready = !currentReady;
 
-                    // ตรวจสอบว่าทุกคนที่ไม่ได้ Sit Out กด Ready ครบแล้วหรือยัง
                     const activePlayers = data.playerOrder.filter(n => data.players[n] && !data.players[n].sitOut);
                     const allReady = activePlayers.length > 0 && activePlayers.every(n => data.players[n].ready);
 
@@ -437,9 +429,6 @@
             const btnContainer = document.getElementById('dealer-controls');
             const isGameRunning = (gameState.stage !== 'Waiting to Deal' && gameState.stage !== 'Showdown' && gameState.stage !== 'Hand Ended');
 
-            // เงื่อนไขการแสดงปุ่ม Ready: 
-            // - แสดงเฉพาะตอนเกมยังไม่เริ่ม หรือเกมจบโชว์ดาวน์แล้ว และผู้เล่นยังไม่ได้กด Ready
-            // - หรือถ้ากด Sit Out แล้วกด Sit In กลับมา ปุ่มจะกลับมาให้กด Ready ใหม่
             if (isSitOut || isGameRunning || isReady) {
                 if (isSitOut) {
                     btnContainer.classList.remove('hidden');
@@ -468,7 +457,7 @@
                         data.players[me].folded = true; 
                         data.players[me].ready = false; 
                     } else {
-                        data.players[me].ready = false; // เมื่อ Sit In กลับมา บังคับให้กด Ready ใหม่
+                        data.players[me].ready = false;
                     }
                 }
                 return data;
@@ -497,9 +486,17 @@
             if(num === 0) return;
             
             data.dealerIndex = (data.dealerIndex !== undefined) ? (data.dealerIndex + 1) % num : 0;
-            data.sbIndex = (data.dealerIndex + 1) % num;
-            data.bbIndex = (data.dealerIndex + 2) % num;
-            data.activeTurnIndex = num === 2 ? data.dealerIndex : (data.bbIndex + 1) % num;
+            
+            // Rules for Heads-Up (2 players) vs Multi-player (3+ players)
+            if(num === 2) {
+                data.sbIndex = data.dealerIndex; // Dealer is Small Blind in Heads-Up
+                data.bbIndex = (data.dealerIndex + 1) % 2; // Other player is Big Blind
+                data.activeTurnIndex = data.dealerIndex; // SB acts first pre-flop in Heads-Up
+            } else {
+                data.sbIndex = (data.dealerIndex + 1) % num;
+                data.bbIndex = (data.dealerIndex + 2) % num;
+                data.activeTurnIndex = (data.bbIndex + 1) % num;
+            }
 
             let deck = createFullDeck();
             data.pot = 0;
@@ -509,8 +506,8 @@
 
             data.playerOrder.forEach((name, idx) => {
                 if(data.players[name]) {
-                    // ล็อก ready ไว้เป็น true ระหว่างเกมวิ่ง เพื่อซ่อนปุ่ม Ready
                     data.players[name].ready = true; 
+                    data.players[name].hasActed = false;
                     if(data.players[name].sitOut || data.players[name].chips <= 0) {
                         data.players[name].holeCards = [];
                         data.players[name].folded = true;
@@ -539,7 +536,7 @@
             let safety = 0;
             while(safety < num) {
                 let currName = data.playerOrder[data.activeTurnIndex];
-                if(data.players[currName] && !data.players[currName].folded && !data.players[currName].sitOut) break;
+                if(data.players[currName] && !data.players[currName].folded && !data.players[currName].sitOut && data.players[currName].chips > 0) break;
                 data.activeTurnIndex = (data.activeTurnIndex + 1) % num;
                 safety++;
             }
@@ -549,6 +546,20 @@
             const me = gameState.myPlayerName.trim();
             if(!me) return;
 
+            if(gameState.stage === 'Waiting to Deal' || gameState.stage === 'Showdown' || gameState.stage === 'Hand Ended') {
+                alert("เกมยังไม่เริ่ม หรืออยู่ในช่วงแสดงผลผู้ชนะ กรุณารอเริ่มมือใหม่");
+                return;
+            }
+            const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex];
+            if(currentTurnPlayer !== me) {
+                alert(`ยังไม่ใช่ตาของคุณ! (ตาปัจจุบันของ: ${currentTurnPlayer})`);
+                return;
+            }
+            if(gameState.players[me]?.folded || gameState.players[me]?.sitOut) {
+                alert("คุณหมอบหรือ Sit Out ไปแล้ว ไม่สามารถออก Action ได้ในตานี้");
+                return;
+            }
+
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
             const raiseVal = type === 'raise' ? (parseInt(document.getElementById('raise-amount').value) || 40) : 0;
 
@@ -557,6 +568,9 @@
                 
                 const currentTurn = data.playerOrder[data.activeTurnIndex];
                 if(currentTurn !== me || data.players[me].folded || data.players[me].sitOut) return data;
+
+                // บันทึกว่าผู้เล่นนี้ได้กระทำในรอบนี้แล้ว
+                data.players[me].hasActed = true;
 
                 if(type === 'fold') {
                     data.players[me].folded = true;
@@ -575,22 +589,31 @@
                         data.players[me].currentBet = raiseVal;
                         data.pot += cost;
                         data.currentBet = raiseVal;
+                        // เมื่อมีการ Raise ให้รีเซ็ตสถานะ hasActed ของผู้เล่นคนอื่น เพื่อให้ทุกคนได้มีโอกาสตอบสนองต่อยอด Bet ใหม่
+                        data.playerOrder.forEach(n => {
+                            if(data.players[n] && n !== me && !data.players[n].folded && !data.players[n].sitOut) {
+                                data.players[n].hasActed = false;
+                            }
+                        });
                     }
                 }
-
-                data.activeTurnIndex = getNextActiveTurn(data.playerOrder, data.players, data.activeTurnIndex);
 
                 const active = data.playerOrder.filter(n => data.players[n] && !data.players[n].folded && !data.players[n].sitOut);
                 if(active.length <= 1) {
                     executeShowdownData(data);
                 } else {
-                    const allMatched = active.every(n => data.players[n].chips === 0 || data.players[n].currentBet === data.currentBet);
-                    if(allMatched) {
+                    // เงื่อนไขจบ Betting Round: ทุกคนต้องได้ Action แล้ว และยอดเงินต้องเท่ากันทั้งหมด
+                    const allHaveActed = active.every(n => data.players[n].chips === 0 || data.players[n].hasActed);
+                    const allBetsMatch = active.every(n => data.players[n].chips === 0 || data.players[n].currentBet === data.currentBet);
+
+                    if(allHaveActed && allBetsMatch) {
                         if(data.stage === 'River') {
                             executeShowdownData(data);
                         } else {
                             advanceStageData(data);
                         }
+                    } else {
+                        data.activeTurnIndex = getNextActiveTurn(data.playerOrder, data.players, data.activeTurnIndex);
                     }
                 }
                 return data;
@@ -599,25 +622,56 @@
 
         function getNextActiveTurn(order, players, idx) {
             let next = idx;
-            for(let i = 0; i < order.length; i++) {
-                next = (next + 1) % order.length;
-                if(players[order[next]] && !players[order[next]].folded && !players[order[next]].sitOut) return next;
+            const num = order.length;
+            for(let i = 0; i < num; i++) {
+                next = (next + 1) % num;
+                let name = order[next];
+                let p = players[name];
+                if(p && !p.folded && !p.sitOut && p.chips > 0) {
+                    return next;
+                }
             }
             return idx;
         }
 
+        function getFirstActiveTurnPostFlop(order, players, dealerIdx) {
+            let next = dealerIdx;
+            const num = order.length;
+            for(let i = 0; i < num; i++) {
+                next = (next + 1) % num;
+                let name = order[next];
+                let p = players[name];
+                if(p && !p.folded && !p.sitOut && p.chips > 0) {
+                    return next;
+                }
+            }
+            return dealerIdx;
+        }
+
         function advanceStageData(data) {
             let deck = createFullDeck();
-            data.playerOrder.forEach(n => { if(data.players[n]) data.players[n].currentBet = 0; });
+            data.playerOrder.forEach(n => { 
+                if(data.players[n]) {
+                    data.players[n].currentBet = 0;
+                    data.players[n].hasActed = false;
+                }
+            });
             data.currentBet = 0;
-            data.activeTurnIndex = getNextActiveTurn(data.playerOrder, data.players, data.dealerIndex);
+
+            const num = data.playerOrder.length;
+            if(num === 2) {
+                // Post-Flop ใน Heads-up ผู้เล่นที่เป็น Big Blind จะได้เริ่มก่อน
+                data.activeTurnIndex = data.bbIndex;
+            } else {
+                data.activeTurnIndex = getFirstActiveTurnPostFlop(data.playerOrder, data.players, data.dealerIndex);
+            }
 
             if(data.stage.includes('Pre-Flop')) { data.stage = 'Flop'; data.communityCards = [deck.pop(), deck.pop(), deck.pop()]; }
             else if(data.stage.includes('Flop')) { data.stage = 'Turn'; data.communityCards.push(deck.pop()); }
             else if(data.stage.includes('Turn')) { data.stage = 'River'; data.communityCards.push(deck.pop()); }
         }
 
-        // 🟢 ระบบประเมินไพ่ Texas Hold'em มาตรฐาน (ตรวจสอบชุด 5 ใบที่ดีที่สุดจาก 7 ใบ)
+        // ระบบประเมินไพ่มาตรฐาน (7 Cards Evaluator)
         const valuesMap = { '2':2, '3':3, '4':4, '5':5, '6':6, '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14 };
         function parseCard(c) {
             return { val: valuesMap[c.slice(0, -2)] || 2, suit: c.slice(-2) };
@@ -732,7 +786,6 @@
                 });
             }
             data.pot = 0;
-            // เมื่อจบ Showdown ให้รีเซ็ตสถานะ ready เป็น false เพื่อให้ผู้เล่นสามารถกด Ready เริ่มเกมในมือถัดไปได้
             data.playerOrder.forEach(n => {
                 if(data.players[n]) {
                     data.players[n].ready = false;
