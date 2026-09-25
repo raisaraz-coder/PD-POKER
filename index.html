@@ -397,8 +397,9 @@
                     if(!data.playerOrder.includes(name)) data.playerOrder.push(name);
                     if(!data.players) data.players = {};
                     if(!data.players[name]) {
-                        const isRunning = (data.stage !== 'Waiting to Deal' && data.stage !== 'Showdown' && data.stage !== 'Hand Ended');
-                        data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false, ready: !isRunning };
+                        // ready ต้องเป็น false เสมอตอนเข้าห้องใหม่ ผู้เล่นต้องกดปุ่ม Ready เองทุกครั้ง
+                        // ไม่งั้นปุ่ม Ready จะถูกซ่อนไปเลย (เพราะ ready=true) และไม่มีใครไป trigger เช็ค "ทุกคนพร้อมแล้ว" ทำให้เกมไม่เริ่ม
+                        data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false, ready: false };
                     }
                 }
                 return data;
