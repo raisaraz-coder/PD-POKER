@@ -61,7 +61,7 @@
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
             <div>
                 <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Hand Evaluator</h1>
-                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Auto Showdown & Showdown Cards</p>
+                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Strict Ready Flow & Robust Hand Evaluation</p>
             </div>
             <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
                 Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
@@ -186,7 +186,8 @@
                         <span class="text-xs text-emerald-400/60 italic">(Waiting for deal)</span>
                     </div>
 
-                    <div id="dealer-controls" class="pt-1">
+                    <!-- Ready Button Container -->
+                    <div id="dealer-controls" class="pt-1 hidden">
                         <button onclick="toggleReadyStatus()" id="ready-vote-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-lg transition flex items-center gap-1.5">
                             🚀 กดพร้อมเริ่มเกม (Ready)
                         </button>
@@ -342,6 +343,7 @@
                 if(data && data.playerOrder && !data.playerOrder.includes(name) && data.playerOrder.length < 10) {
                     data.playerOrder.push(name);
                     if(!data.players) data.players = {};
+                    // ผู้เล่นใหม่ที่เข้ามากลางเกม จะเริ่มต้นด้วย ready: false เพื่อรอพร้อมใน Hand ถัดไป
                     data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false, ready: false };
                 }
                 return data;
@@ -372,7 +374,10 @@
                     if(!data.playerOrder) data.playerOrder = [];
                     if(!data.playerOrder.includes(name)) data.playerOrder.push(name);
                     if(!data.players) data.players = {};
-                    if(!data.players[name]) data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false, ready: true };
+                    if(!data.players[name]) {
+                        // ผู้เล่นใหม่ตั้งค่า ready: false เพื่อรอให้กดพร้อม
+                        data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false, ready: false };
+                    }
                 }
                 return data;
             });
@@ -386,7 +391,7 @@
             document.getElementById('room-badge').classList.remove('hidden');
             document.getElementById('current-room-code').innerText = gameState.roomCode;
             document.getElementById('current-role-badge').innerText = gameState.myPlayerName;
-            ['host-close-btn', 'dealer-controls', 'host-add-player-box'].forEach(id => document.getElementById(id).classList.remove('hidden'));
+            ['host-close-btn', 'host-add-player-box'].forEach(id => document.getElementById(id).classList.remove('hidden'));
             startFirebaseRealtimeSync();
         }
 
@@ -411,10 +416,11 @@
                     const currentReady = data.players[me].ready || false;
                     data.players[me].ready = !currentReady;
 
+                    // ตรวจสอบว่าทุกคนที่ไม่ได้ Sit Out กด Ready ครบแล้วหรือยัง
                     const activePlayers = data.playerOrder.filter(n => data.players[n] && !data.players[n].sitOut);
                     const allReady = activePlayers.length > 0 && activePlayers.every(n => data.players[n].ready);
 
-                    if(allReady && (data.stage === 'Waiting to Deal' || data.stage === 'Hand Ended' || data.stage === 'Showdown')) {
+                    if(allReady && (data.stage === 'Waiting to Deal' || data.stage === 'Showdown' || data.stage === 'Hand Ended')) {
                         startHandInsideTransaction(data);
                     }
                 }
@@ -425,28 +431,29 @@
         function updateReadyButtonUI() {
             const me = gameState.myPlayerName;
             if(!me || !gameState.players[me]) return;
-            const isReady = gameState.players[me].ready || false;
-            const isSitOut = gameState.players[me].sitOut || false;
+            const p = gameState.players[me];
+            const isReady = p.ready || false;
+            const isSitOut = p.sitOut || false;
             const btnContainer = document.getElementById('dealer-controls');
+            const isGameRunning = (gameState.stage !== 'Waiting to Deal' && gameState.stage !== 'Showdown' && gameState.stage !== 'Hand Ended');
 
-            // ซ่อนปุ่ม Ready ทันทีเมื่อกดพร้อมแล้ว และจะแสดงขึ้นมาเฉพาะตอนที่กด Sit Out / Sit In ใหม่เท่านั้น
-            if(isReady && gameState.stage !== 'Waiting to Deal' && gameState.stage !== 'Hand Ended' && gameState.stage !== 'Showdown') {
-                btnContainer.classList.add('hidden');
-            } else if (isSitOut) {
+            // เงื่อนไขการแสดงปุ่ม Ready: 
+            // - แสดงเฉพาะตอนเกมยังไม่เริ่ม หรือเกมจบโชว์ดาวน์แล้ว และผู้เล่นยังไม่ได้กด Ready
+            // - หรือถ้ากด Sit Out แล้วกด Sit In กลับมา ปุ่มจะกลับมาให้กด Ready ใหม่
+            if (isSitOut || isGameRunning || isReady) {
+                if (isSitOut) {
+                    btnContainer.classList.remove('hidden');
+                    const btn = document.getElementById('ready-vote-btn');
+                    btn.innerText = "🚀 กดพร้อมเริ่มเกม (Ready)";
+                    btn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-lg transition flex items-center gap-1.5";
+                } else {
+                    btnContainer.classList.add('hidden');
+                }
+            } else {
                 btnContainer.classList.remove('hidden');
                 const btn = document.getElementById('ready-vote-btn');
                 btn.innerText = "🚀 กดพร้อมเริ่มเกม (Ready)";
                 btn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-lg transition flex items-center gap-1.5";
-            } else {
-                btnContainer.classList.remove('hidden');
-                const btn = document.getElementById('ready-vote-btn');
-                if(isReady) {
-                    btn.innerText = "✅ ยกเลิกพร้อม (Unready)";
-                    btn.className = "bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-lg transition flex items-center gap-1.5";
-                } else {
-                    btn.innerText = "🚀 กดพร้อมเริ่มเกม (Ready)";
-                    btn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-lg transition flex items-center gap-1.5";
-                }
             }
         }
 
@@ -461,7 +468,7 @@
                         data.players[me].folded = true; 
                         data.players[me].ready = false; 
                     } else {
-                        data.players[me].ready = false; // เปิดให้กด Ready ใหม่เมื่อกลับเข้ามา Sit In
+                        data.players[me].ready = false; // เมื่อ Sit In กลับมา บังคับให้กด Ready ใหม่
                     }
                 }
                 return data;
@@ -502,7 +509,8 @@
 
             data.playerOrder.forEach((name, idx) => {
                 if(data.players[name]) {
-                    data.players[name].ready = true; // ล็อคสถานะว่าพร้อมแล้วในรอบนี้
+                    // ล็อก ready ไว้เป็น true ระหว่างเกมวิ่ง เพื่อซ่อนปุ่ม Ready
+                    data.players[name].ready = true; 
                     if(data.players[name].sitOut || data.players[name].chips <= 0) {
                         data.players[name].holeCards = [];
                         data.players[name].folded = true;
@@ -609,21 +617,88 @@
             else if(data.stage.includes('Turn')) { data.stage = 'River'; data.communityCards.push(deck.pop()); }
         }
 
-        function evaluateHand(holeCards, communityCards) {
-            const allCards = [...holeCards, ...communityCards];
-            const valuesMap = { '2':2, '3':3, '4':4, '5':5, '6':6, '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14 };
-            let parsed = allCards.map(c => ({ val: valuesMap[c.slice(0, -2)] || 2, suit: c.slice(-2) })).sort((a,b) => b.val - a.val);
-            
-            let counts = {};
-            parsed.forEach(c => counts[c.val] = (counts[c.val] || 0) + 1);
-            let countArr = Object.values(counts);
+        // 🟢 ระบบประเมินไพ่ Texas Hold'em มาตรฐาน (ตรวจสอบชุด 5 ใบที่ดีที่สุดจาก 7 ใบ)
+        const valuesMap = { '2':2, '3':3, '4':4, '5':5, '6':6, '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14 };
+        function parseCard(c) {
+            return { val: valuesMap[c.slice(0, -2)] || 2, suit: c.slice(-2) };
+        }
 
-            if(countArr.includes(4)) return { score: 700, name: "Four of a Kind" };
-            if(countArr.includes(3) && countArr.includes(2)) return { score: 600, name: "Full House" };
-            if(countArr.includes(3)) return { score: 300, name: "Three of a Kind" };
-            if(countArr.filter(c => c === 2).length >= 2) return { score: 200, name: "Two Pair" };
-            if(countArr.includes(2)) return { score: 100, name: "One Pair" };
-            return { score: parsed[0].val, name: "High Card" };
+        function evaluate5Cards(cards) {
+            cards.sort((a, b) => b.val - a.val);
+            let isFlush = cards.every(c => c.suit === cards[0].suit);
+            let vals = cards.map(c => c.val);
+            let isStraight = false;
+            let straightHigh = 0;
+
+            if (vals[0] - vals[1] === 1 && vals[1] - vals[2] === 1 && vals[2] - vals[3] === 1 && vals[3] - vals[4] === 1) {
+                isStraight = true;
+                straightHigh = vals[0];
+            } else if (vals[0] === 14 && vals[1] === 5 && vals[2] === 4 && vals[3] === 3 && vals[4] === 2) {
+                isStraight = true;
+                straightHigh = 5;
+            }
+
+            let counts = {};
+            cards.forEach(c => counts[c.val] = (counts[c.val] || 0) + 1);
+            let countEntries = Object.entries(counts).map(([v, cnt]) => ({ val: parseInt(v), cnt }));
+            countEntries.sort((a, b) => b.cnt - a.cnt || b.val - a.val);
+
+            if (isFlush && isStraight) {
+                return { rank: 8, score: 8000000 + straightHigh, name: straightHigh === 14 ? "Royal Flush" : "Straight Flush" };
+            }
+            if (countEntries[0].cnt === 4) {
+                return { rank: 7, score: 7000000 + countEntries[0].val * 100 + countEntries[1].val, name: "Four of a Kind" };
+            }
+            if (countEntries[0].cnt === 3 && countEntries[1].cnt === 2) {
+                return { rank: 6, score: 6000000 + countEntries[0].val * 100 + countEntries[1].val, name: "Full House" };
+            }
+            if (isFlush) {
+                return { rank: 5, score: 5000000 + vals[0]*10000 + vals[1]*1000 + vals[2]*100 + vals[3]*10 + vals[4], name: "Flush" };
+            }
+            if (isStraight) {
+                return { rank: 4, score: 4000000 + straightHigh, name: "Straight" };
+            }
+            if (countEntries[0].cnt === 3) {
+                let kickers = cards.filter(c => c.val !== countEntries[0].val).map(c => c.val);
+                return { rank: 3, score: 3000000 + countEntries[0].val * 10000 + kickers[0]*100 + kickers[1], name: "Three of a Kind" };
+            }
+            if (countEntries[0].cnt === 2 && countEntries[1].cnt === 2) {
+                let highPair = Math.max(countEntries[0].val, countEntries[1].val);
+                let lowPair = Math.min(countEntries[0].val, countEntries[1].val);
+                return { rank: 2, score: 2000000 + highPair * 10000 + lowPair * 100 + countEntries[2].val, name: "Two Pair" };
+            }
+            if (countEntries[0].cnt === 2) {
+                let kickers = cards.filter(c => c.val !== countEntries[0].val).map(c => c.val);
+                return { rank: 1, score: 1000000 + countEntries[0].val * 100000 + kickers[0]*1000 + kickers[1]*10 + kickers[2], name: "One Pair" };
+            }
+            return { rank: 0, score: vals[0]*10000 + vals[1]*1000 + vals[2]*100 + vals[3]*10 + vals[4], name: "High Card" };
+        }
+
+        function evaluateHand(holeCards, communityCards) {
+            const allCardsStr = [...holeCards, ...communityCards];
+            if (allCardsStr.length < 5) return { score: 0, name: "Waiting" };
+            
+            let allParsed = allCardsStr.map(parseCard);
+            let bestResult = { score: -1, name: "High Card" };
+
+            function getCombinations(arr, k) {
+                let result = [];
+                function comb(start, combo) {
+                    if (combo.length === k) { result.push([...combo]); return; }
+                    for (let i = start; i < arr.length; i++) {
+                        combo.push(arr[i]); comb(i + 1, combo); combo.pop();
+                    }
+                }
+                comb(0, []);
+                return result;
+            }
+
+            let combos = getCombinations(allParsed, 5);
+            for (let combo of combos) {
+                let res = evaluate5Cards(combo);
+                if (res.score > bestResult.score) { bestResult = res; }
+            }
+            return bestResult;
         }
 
         function executeShowdownData(data) {
@@ -657,6 +732,12 @@
                 });
             }
             data.pot = 0;
+            // เมื่อจบ Showdown ให้รีเซ็ตสถานะ ready เป็น false เพื่อให้ผู้เล่นสามารถกด Ready เริ่มเกมในมือถัดไปได้
+            data.playerOrder.forEach(n => {
+                if(data.players[n]) {
+                    data.players[n].ready = false;
+                }
+            });
         }
 
         function renderGameTable() {
@@ -687,7 +768,6 @@
                     (p.ready ? `<span class="text-[9px] text-emerald-400 font-bold">✅ Ready</span>` : `<span class="text-[9px] text-amber-400">⏳ Not Ready</span>`) : 
                     (p.sitOut ? '🛌 Sit Out' : (p.folded ? '🔴 Folded' : `Bet: ${p.currentBet}`));
 
-                // โชว์ไพ่และ Hand เมื่อถึงรอบ Showdown สำหรับคนที่ยังไม่หมอบ
                 let showdownCardHtml = '';
                 if(gameState.stage === 'Showdown' && p.holeCards && p.holeCards.length > 0 && !p.folded && !p.sitOut) {
                     showdownCardHtml = `
