@@ -61,7 +61,7 @@
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
             <div>
                 <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Hand Evaluator</h1>
-                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Auto Showdown & Poker Hand Ranking</p>
+                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Auto Showdown & Vote Ready System</p>
             </div>
             <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
                 Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
@@ -73,7 +73,7 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <!-- Host Panel -->
                 <div id="host-setup-panel" class="bg-slate-900/50 p-5 rounded-xl border border-slate-700 space-y-4">
-                    <h2 class="text-lg font-semibold text-amber-300">👑 Create Room (Host Only)</h2>
+                    <h2 class="text-lg font-semibold text-amber-300">👑 Create Room</h2>
                     <div class="grid grid-cols-3 gap-2">
                         <div>
                             <label class="block text-xs text-slate-400 mb-1">Buy-In (THB)</label>
@@ -96,7 +96,6 @@
                         </div>
                     </div>
 
-                    <!-- Cloud Saved Player Tiles Selector + Add All Button -->
                     <div>
                         <div class="flex justify-between items-center mb-1">
                             <span class="text-xs text-slate-400">Select players scope for this room:</span>
@@ -110,7 +109,6 @@
                         </div>
                     </div>
 
-                    <!-- Selected Scope List -->
                     <div>
                         <span class="text-xs text-slate-400">Potential players scope (Ready for room):</span>
                         <div id="preset-players-list" class="flex flex-wrap gap-2 mt-1 min-h-[40px] p-2 bg-slate-800/80 rounded-lg border border-slate-700">
@@ -134,16 +132,11 @@
                             <button onclick="loadRoomToJoin()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 rounded-lg transition">Step 2: Find Room & Load Players</button>
                         </div>
                         
-                        <!-- Join Selection Area -->
                         <div id="join-selection-area" class="mt-4 hidden space-y-3 bg-slate-800/80 p-3 rounded-xl border border-slate-700">
                             <div>
                                 <label class="block text-xs text-slate-400 mb-1">Step 3: Select your name to sit at table:</label>
                                 <select id="join-name-select" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-400">
                                 </select>
-                            </div>
-                            <div class="flex items-center gap-2 pt-1">
-                                <input type="checkbox" id="join-as-host-check" class="w-4 h-4 rounded bg-slate-800 border-slate-600 text-emerald-500 focus:ring-emerald-400">
-                                <label for="join-as-host-check" class="text-xs text-amber-300 font-medium">I am the Host (Table Controller)</label>
                             </div>
                             <button onclick="joinGameAsPlayer()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-lg transition shadow-md">🚀 Take Seat & Play</button>
                         </div>
@@ -154,7 +147,6 @@
 
         <!-- Main View: Game Table & Active Management -->
         <div id="view-game" class="hidden space-y-4">
-            <!-- Top Controls bar -->
             <div class="flex flex-wrap justify-between items-center bg-slate-900/60 p-3 rounded-xl border border-slate-700 gap-2">
                 <div class="flex items-center gap-4">
                     <div>
@@ -163,22 +155,12 @@
                     </div>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
-                    <!-- Sit Out / Sit In Toggle Button -->
                     <button id="sit-out-btn" onclick="toggleSitOutStatus()" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition">🛌 Sit Out</button>
-
                     <button onclick="copyRoomShareLink()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition flex items-center gap-1">🔗 Share Link</button>
                     
-                    <!-- Host Add Player Mid-Game Button -->
                     <div id="host-add-player-box" class="hidden items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700">
                         <input type="text" id="midgame-new-player" placeholder="New player name" class="w-28 bg-slate-900 border border-slate-600 rounded text-xs px-2 py-1 text-white">
                         <button onclick="addPlayerMidGame()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-2.5 py-1 rounded">+ Add</button>
-                    </div>
-                    <div id="host-blind-controls" class="hidden items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700">
-                        <span class="text-[10px] text-slate-400">SB/BB:</span>
-                        <input type="number" id="quick-sb" class="w-10 bg-slate-900 border border-slate-600 rounded text-xs px-1 text-white text-center" value="10">
-                        <span class="text-slate-500">/</span>
-                        <input type="number" id="quick-bb" class="w-10 bg-slate-900 border border-slate-600 rounded text-xs px-1 text-white text-center" value="20">
-                        <button onclick="updateBlinds()" class="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-2 py-1 rounded">Set</button>
                     </div>
                     <button onclick="openCloseTableModal()" id="host-close-btn" class="hidden bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition">🛑 Close Table</button>
                     <button onclick="leaveGame()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-2 rounded-lg transition">Leave</button>
@@ -189,7 +171,6 @@
             <div class="relative w-full h-[540px] bg-emerald-900 border-[10px] border-amber-950 rounded-[180px] shadow-2xl flex flex-col items-center justify-center p-4 my-2 overflow-hidden">
                 <div class="absolute inset-4 border-2 border-emerald-700/60 rounded-[150px] pointer-events-none"></div>
 
-                <!-- Center Table Info: Pot, Stage, Turn Indicator, Community Cards -->
                 <div class="z-10 flex flex-col items-center space-y-2 bg-emerald-950/80 border border-emerald-700/60 px-6 py-4 rounded-2xl shadow-xl backdrop-blur-sm max-w-xl text-center">
                     <div class="flex gap-4 text-xs font-mono text-emerald-300">
                         <span>STAGE: <strong id="table-stage" class="text-white">Waiting to Deal</strong></span>
@@ -197,25 +178,23 @@
                         <span>BET: <strong id="table-current-bet" class="text-white">0</strong> THB</span>
                     </div>
 
-                    <!-- Turn Indicator Banner -->
                     <div id="center-turn-indicator" class="bg-amber-500/20 border border-amber-400/80 text-amber-300 font-bold px-4 py-1 rounded-full text-xs animate-pulse">
                         Waiting for action...
                     </div>
 
-                    <!-- Community Cards -->
                     <div id="community-cards" class="flex gap-2.5 min-h-[60px] items-center">
                         <span class="text-xs text-emerald-400/60 italic">(Waiting for deal)</span>
                     </div>
 
-                    <!-- Host Controls -->
-                    <div id="dealer-controls" class="hidden flex flex-wrap justify-center gap-1.5 pt-1">
-                        <button onclick="startNewHand()" id="start-game-btn" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-md shadow">🚀 Start Game</button>
+                    <!-- Vote Ready Button (Replaces Host Start Button) -->
+                    <div id="dealer-controls" class="pt-1">
+                        <button onclick="toggleReadyStatus()" id="ready-vote-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-lg transition flex items-center gap-1.5">
+                            🚀 กดพร้อมเริ่มเกม (Ready)
+                        </button>
                     </div>
                 </div>
 
-                <!-- Circular Seats Container -->
-                <div id="poker-seats-container" class="absolute inset-0 pointer-events-none">
-                </div>
+                <div id="poker-seats-container" class="absolute inset-0 pointer-events-none"></div>
             </div>
 
             <!-- Player's Action Panel -->
@@ -243,7 +222,6 @@
         <div id="modal-close-table" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
             <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
                 <h3 class="text-xl font-bold text-amber-400">🏁 Final Chip Count</h3>
-                <p class="text-xs text-slate-400">Enter final chip stack for each player to calculate exact net profit/loss</p>
                 <div id="final-chips-inputs" class="space-y-3 my-4"></div>
                 <div class="flex gap-3 pt-2">
                     <button onclick="closeTableModalCancel()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-medium py-2.5 rounded-xl transition">Cancel</button>
@@ -358,7 +336,6 @@
         }
 
         async function addPlayerMidGame() {
-            if(!gameState.isHost) return;
             const name = document.getElementById('midgame-new-player').value.trim();
             if(!name) return;
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
@@ -366,7 +343,7 @@
                 if(data && data.playerOrder && !data.playerOrder.includes(name) && data.playerOrder.length < 10) {
                     data.playerOrder.push(name);
                     if(!data.players) data.players = {};
-                    data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false };
+                    data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false, ready: false };
                 }
                 return data;
             });
@@ -389,7 +366,6 @@
             const name = document.getElementById('join-name-select').value.trim();
             if(!name) return;
             gameState.myPlayerName = name;
-            if(document.getElementById('join-as-host-check').checked) gameState.isHost = true;
 
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
             await window.FB_runTransaction(roomRef, (data) => {
@@ -397,7 +373,7 @@
                     if(!data.playerOrder) data.playerOrder = [];
                     if(!data.playerOrder.includes(name)) data.playerOrder.push(name);
                     if(!data.players) data.players = {};
-                    if(!data.players[name]) data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false };
+                    if(!data.players[name]) data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false, ready: false };
                 }
                 return data;
             });
@@ -410,7 +386,8 @@
             document.getElementById('view-game').classList.remove('hidden');
             document.getElementById('room-badge').classList.remove('hidden');
             document.getElementById('current-room-code').innerText = gameState.roomCode;
-            document.getElementById('current-role-badge').innerText = gameState.myPlayerName + (gameState.isHost ? ' (Host 👑)' : ' (Player)');
+            document.getElementById('current-role-badge').innerText = gameState.myPlayerName;
+            ['host-close-btn', 'dealer-controls', 'host-add-player-box'].forEach(id => document.getElementById(id).classList.remove('hidden'));
             startFirebaseRealtimeSync();
         }
 
@@ -419,10 +396,46 @@
             unsubscribeFirebase = window.FB_onValue(window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode), (snapshot) => {
                 if(snapshot.exists()) {
                     Object.assign(gameState, snapshot.val());
+                    updateReadyButtonUI();
                     updateSitOutButtonUI();
                     if(gameState.isClosed) showSummaryView(); else renderGameTable();
                 }
             });
+        }
+
+        async function toggleReadyStatus() {
+            const me = gameState.myPlayerName.trim();
+            if(!me) return;
+            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
+            await window.FB_runTransaction(roomRef, (data) => {
+                if(data && data.players[me]) {
+                    const currentReady = data.players[me].ready || false;
+                    data.players[me].ready = !currentReady;
+
+                    // เช็คว่าถ้าทุกคนที่ไมได้ Sit Out กด Ready ครบแล้ว และมีผู้เล่นอย่างน้อย 1-2 คน ให้เริ่มเกมอัตโนมัติทันที
+                    const activePlayers = data.playerOrder.filter(n => data.players[n] && !data.players[n].sitOut);
+                    const allReady = activePlayers.length > 0 && activePlayers.every(n => data.players[n].ready);
+
+                    if(allReady && (data.stage === 'Waiting to Deal' || data.stage === 'Hand Ended')) {
+                        startHandInsideTransaction(data);
+                    }
+                }
+                return data;
+            });
+        }
+
+        function updateReadyButtonUI() {
+            const me = gameState.myPlayerName;
+            if(!me || !gameState.players[me]) return;
+            const isReady = gameState.players[me].ready || false;
+            const btn = document.getElementById('ready-vote-btn');
+            if(isReady) {
+                btn.innerText = "✅ ยกเลิกพร้อม (Unready)";
+                btn.className = "bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-lg transition flex items-center gap-1.5";
+            } else {
+                btn.innerText = "🚀 กดพร้อมเริ่มเกม (Ready)";
+                btn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-lg transition flex items-center gap-1.5";
+            }
         }
 
         async function toggleSitOutStatus() {
@@ -432,7 +445,7 @@
             await window.FB_runTransaction(roomRef, (data) => {
                 if(data && data.players[me]) {
                     data.players[me].sitOut = !data.players[me].sitOut;
-                    if(data.players[me].sitOut) data.players[me].folded = true;
+                    if(data.players[me].sitOut) { data.players[me].folded = true; data.players[me].ready = false; }
                 }
                 return data;
             });
@@ -447,14 +460,6 @@
             btn.className = isSitOut ? "bg-emerald-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition" : "bg-amber-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition";
         }
 
-        async function updateBlinds() {
-            if(!gameState.isHost) return;
-            const sb = parseInt(document.getElementById('quick-sb').value) || 10;
-            const bb = parseInt(document.getElementById('quick-bb').value) || 20;
-            await window.FB_update(window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode), { smallBlind: sb, bigBlind: bb });
-            alert('Blinds updated!');
-        }
-
         function createFullDeck() {
             const suits = ['♠️', '♥️', '♦️', '♣️'];
             const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -463,67 +468,58 @@
             return deck.sort(() => Math.random() - 0.5);
         }
 
-        // 🟢 เริ่มเกมใหม่ (แจกไพ่และตั้งต้นเทิร์นอย่างปลอดภัย ป้องกันปัญหาค้างและข้าม)
-        async function startNewHand() {
-            if(!gameState.isHost) return;
-            const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-            await window.FB_runTransaction(roomRef, (data) => {
-                if(!data || !data.playerOrder || data.playerOrder.length === 0) return data;
-                
-                const num = data.playerOrder.length;
-                data.dealerIndex = (data.dealerIndex + 1) % num;
-                data.sbIndex = (data.dealerIndex + 1) % num;
-                data.bbIndex = (data.dealerIndex + 2) % num;
+        function startHandInsideTransaction(data) {
+            const num = data.playerOrder.length;
+            if(num === 0) return;
+            
+            data.dealerIndex = (data.dealerIndex !== undefined) ? (data.dealerIndex + 1) % num : 0;
+            data.sbIndex = (data.dealerIndex + 1) % num;
+            data.bbIndex = (data.dealerIndex + 2) % num;
+            data.activeTurnIndex = num === 2 ? data.dealerIndex : (data.bbIndex + 1) % num;
 
-                // กำหนดตาเดินเริ่มที่คนถัดจาก BB (ถ้าผู้เล่นมี 2 คน ตาเดินจะเริ่มที่คนแจกไพ่/SB ตามกติกา Head-up)
-                data.activeTurnIndex = num === 2 ? data.dealerIndex : (data.bbIndex + 1) % num;
+            let deck = createFullDeck();
+            data.pot = 0;
+            data.currentBet = data.bigBlind || 20;
+            data.stage = 'Pre-Flop';
+            data.communityCards = [];
 
-                let deck = createFullDeck();
-                data.pot = 0;
-                data.currentBet = data.bigBlind || 20;
-                data.stage = 'Pre-Flop';
-                data.communityCards = [];
+            data.playerOrder.forEach((name, idx) => {
+                if(data.players[name]) {
+                    data.players[name].ready = false; // รีเซ็ตสถานะโหวตเมื่อเริ่มมือใหม่
+                    if(data.players[name].sitOut || data.players[name].chips <= 0) {
+                        data.players[name].holeCards = [];
+                        data.players[name].folded = true;
+                        data.players[name].currentBet = 0;
+                    } else {
+                        data.players[name].holeCards = [deck.pop(), deck.pop()];
+                        data.players[name].folded = false;
+                        data.players[name].currentBet = 0;
+                        delete data.players[name].resultText;
 
-                data.playerOrder.forEach((name, idx) => {
-                    if(data.players[name]) {
-                        if(data.players[name].sitOut || data.players[name].chips <= 0) {
-                            data.players[name].holeCards = [];
-                            data.players[name].folded = true;
-                            data.players[name].currentBet = 0;
-                        } else {
-                            data.players[name].holeCards = [deck.pop(), deck.pop()];
-                            data.players[name].folded = false;
-                            data.players[name].currentBet = 0;
-                            delete data.players[name].resultText;
-
-                            if(idx === data.sbIndex) {
-                                let amt = Math.min(data.smallBlind || 10, data.players[name].chips);
-                                data.players[name].chips -= amt;
-                                data.players[name].currentBet = amt;
-                                data.pot += amt;
-                            } else if(idx === data.bbIndex) {
-                                let amt = Math.min(data.bigBlind || 20, data.players[name].chips);
-                                data.players[name].chips -= amt;
-                                data.players[name].currentBet = amt;
-                                data.pot += amt;
-                            }
+                        if(idx === data.sbIndex) {
+                            let amt = Math.min(data.smallBlind || 10, data.players[name].chips);
+                            data.players[name].chips -= amt;
+                            data.players[name].currentBet = amt;
+                            data.pot += amt;
+                        } else if(idx === data.bbIndex) {
+                            let amt = Math.min(data.bigBlind || 20, data.players[name].chips);
+                            data.players[name].chips -= amt;
+                            data.players[name].currentBet = amt;
+                            data.pot += amt;
                         }
                     }
-                });
-
-                // ตรวจสอบความพร้อมของเทิร์นแรกสุด หากคนแรกหมอบหรือ Sit Out ให้ขยับหาคนถัดไปทันที
-                let safety = 0;
-                while(safety < num) {
-                    let currName = data.playerOrder[data.activeTurnIndex];
-                    if(data.players[currName] && !data.players[currName].folded && !data.players[currName].sitOut) break;
-                    data.activeTurnIndex = (data.activeTurnIndex + 1) % num;
-                    safety++;
                 }
-                return data;
             });
+
+            let safety = 0;
+            while(safety < num) {
+                let currName = data.playerOrder[data.activeTurnIndex];
+                if(data.players[currName] && !data.players[currName].folded && !data.players[currName].sitOut) break;
+                data.activeTurnIndex = (data.activeTurnIndex + 1) % num;
+                safety++;
+            }
         }
 
-        // 🟢 ฟังก์ชัน Action ของผู้เล่น (ปลอดภัย ไร้รอยต่อ ไม่มีทางข้ามตา)
         async function playerAction(type) {
             const me = gameState.myPlayerName.trim();
             if(!me) return;
@@ -557,10 +553,8 @@
                     }
                 }
 
-                // ขยับตาเดินถัดไป
                 data.activeTurnIndex = getNextActiveTurn(data.playerOrder, data.players, data.activeTurnIndex);
 
-                // เช็คว่าเหลือคนเล่นกี่คน
                 const active = data.playerOrder.filter(n => data.players[n] && !data.players[n].folded && !data.players[n].sitOut);
                 if(active.length <= 1) {
                     executeShowdownData(data);
@@ -611,7 +605,7 @@
             document.getElementById('table-current-bet').innerText = gameState.currentBet;
             
             const currentTurnPlayer = gameState.playerOrder[gameState.activeTurnIndex] || 'None';
-            document.getElementById('center-turn-indicator').innerText = gameState.stage === 'Showdown' ? "🏆 SHOWDOWN!" : (gameState.stage === 'Waiting to Deal' ? "⏳ Waiting for Host to Start" : `👉 CURRENT TURN: ${currentTurnPlayer}`);
+            document.getElementById('center-turn-indicator').innerText = gameState.stage === 'Showdown' ? "🏆 SHOWDOWN!" : (gameState.stage === 'Waiting to Deal' ? "⏳ โหวตกดพร้อม (Ready) เพื่อเริ่มเกม" : `👉 CURRENT TURN: ${currentTurnPlayer}`);
 
             document.getElementById('community-cards').innerHTML = gameState.communityCards?.length ? gameState.communityCards.map(c => `<div class="bg-white text-slate-900 font-bold px-3 py-2 rounded">${c}</div>`).join('') : `<span class="text-xs text-emerald-400/60">(Waiting)</span>`;
             
@@ -623,12 +617,17 @@
             if(!total) { seats.innerHTML = ""; return; }
 
             seats.innerHTML = gameState.playerOrder.map((name, idx) => {
-                const p = gameState.players[name] || { chips: 0, folded: false, currentBet: 0 };
+                const p = gameState.players[name] || { chips: 0, folded: false, currentBet: 0, ready: false };
                 const isMyTurn = (idx === gameState.activeTurnIndex && !p.sitOut && gameState.stage !== 'Showdown' && gameState.stage !== 'Waiting to Deal');
                 const angle = (idx / total) * 2 * Math.PI - Math.PI / 2;
                 const x = 50 + 42 * Math.cos(angle);
                 const y = 50 + 36 * Math.sin(angle);
-                return `<div class="absolute transform -translate-x-1/2 -translate-y-1/2" style="left:${x}%; top:${y}%;"><div class="bg-slate-900/95 border ${isMyTurn ? 'active-turn border-amber-400' : 'border-slate-700'} rounded-xl p-2 w-36 text-center"><div class="font-bold text-xs text-white truncate">${name}</div><div class="text-emerald-400 font-mono text-xs">${p.chips} ฿</div><div class="text-[9px] text-slate-400">${p.sitOut ? 'Sit Out' : (p.folded ? 'Folded' : `Bet: ${p.currentBet}`)}</div></div></div>`;
+                
+                let readyBadge = (gameState.stage === 'Waiting to Deal' || gameState.stage === 'Hand Ended') ? 
+                    (p.ready ? `<span class="text-[9px] text-emerald-400 font-bold">✅ Ready</span>` : `<span class="text-[9px] text-amber-400">⏳ Not Ready</span>`) : 
+                    (p.sitOut ? '🛌 Sit Out' : (p.folded ? '🔴 Folded' : `Bet: ${p.currentBet}`));
+
+                return `<div class="absolute transform -translate-x-1/2 -translate-y-1/2" style="left:${x}%; top:${y}%;"><div class="bg-slate-900/95 border ${isMyTurn ? 'active-turn border-amber-400' : 'border-slate-700'} rounded-xl p-2 w-36 text-center"><div class="font-bold text-xs text-white truncate">${name}</div><div class="text-emerald-400 font-mono text-xs">${p.chips} ฿</div><div class="text-[9px] text-slate-400">${readyBadge}</div></div></div>`;
             }).join('');
         }
 
@@ -651,7 +650,7 @@
             if(unsubscribeFirebase) unsubscribeFirebase();
             document.getElementById('view-game').classList.add('hidden');
             document.getElementById('view-summary').classList.remove('hidden');
-            document.getElementById('summary-table-body').innerHTML = Object.entries(gameState.players).map(([name, p]) => `<tr class="border-b border-slate-700"><td class="px-4 py-2">${name}</td><td class="px-4 py-2">${p.totalBuyIn || gameState.buyIn} ฿</td><td class="px-4 py-2">${p.chips} ฿</td><td class="px-4 py-2 text-right">${p.chips - (p.totalBuyIn || gameState.buyIn)} ฿</td></tr>`).join('');
+            document.getElementById('summary-table-body').innerHTML = Object.entries(gameState.players).map(([name, p]) => `<tr class="border-b border-slate-700"><td class="px-4 py-2">${name}</td><td class="px-4 py-2">${p.totalBuyIn || gameState.buyIn} ้าย ฿</td><td class="px-4 py-2">${p.chips} ฿</td><td class="px-4 py-2 text-right">${p.chips - (p.totalBuyIn || gameState.buyIn)} ฿</td></tr>`).join('');
         }
         function copyShareText() { navigator.clipboard.writeText(`Poker Summary Room: ${gameState.roomCode}`).then(() => alert('Copied!')); }
         function leaveGame() { location.reload(); }
