@@ -61,7 +61,7 @@
         <div class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 mb-4">
             <div>
                 <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Hand Evaluator</h1>
-                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Auto Showdown & Vote Ready System</p>
+                <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Auto Showdown & Showdown Cards</p>
             </div>
             <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
                 Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
@@ -168,7 +168,7 @@
             </div>
 
             <!-- Authentic Oval Poker Table Layout -->
-            <div class="relative w-full h-[540px] bg-emerald-900 border-[10px] border-amber-950 rounded-[180px] shadow-2xl flex flex-col items-center justify-center p-4 my-2 overflow-hidden">
+            <div class="relative w-full h-[580px] bg-emerald-900 border-[10px] border-amber-950 rounded-[180px] shadow-2xl flex flex-col items-center justify-center p-4 my-2 overflow-hidden">
                 <div class="absolute inset-4 border-2 border-emerald-700/60 rounded-[150px] pointer-events-none"></div>
 
                 <div class="z-10 flex flex-col items-center space-y-2 bg-emerald-950/80 border border-emerald-700/60 px-6 py-4 rounded-2xl shadow-xl backdrop-blur-sm max-w-xl text-center">
@@ -196,7 +196,7 @@
                 <div id="poker-seats-container" class="absolute inset-0 pointer-events-none"></div>
             </div>
 
-            <!-- Player's Action Panel (Fixed to bottom with safe offset for mobile keyboards) -->
+            <!-- Player's Action Panel -->
             <div class="sticky bottom-2 z-40 bg-slate-900/95 border border-slate-700 rounded-xl p-3 flex flex-col md:flex-row items-center justify-between gap-3 shadow-2xl">
                 <div class="flex items-center gap-4 w-full md:w-auto">
                     <div>
@@ -372,7 +372,7 @@
                     if(!data.playerOrder) data.playerOrder = [];
                     if(!data.playerOrder.includes(name)) data.playerOrder.push(name);
                     if(!data.players) data.players = {};
-                    if(!data.players[name]) data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false, ready: false };
+                    if(!data.players[name]) data.players[name] = { chips: data.buyIn, totalBuyIn: data.buyIn, holeCards: [], folded: true, currentBet: 0, sitOut: false, ready: true };
                 }
                 return data;
             });
@@ -426,13 +426,27 @@
             const me = gameState.myPlayerName;
             if(!me || !gameState.players[me]) return;
             const isReady = gameState.players[me].ready || false;
-            const btn = document.getElementById('ready-vote-btn');
-            if(isReady) {
-                btn.innerText = "✅ ยกเลิกพร้อม (Unready)";
-                btn.className = "bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-lg transition flex items-center gap-1.5";
-            } else {
+            const isSitOut = gameState.players[me].sitOut || false;
+            const btnContainer = document.getElementById('dealer-controls');
+
+            // ซ่อนปุ่ม Ready ทันทีเมื่อกดพร้อมแล้ว และจะแสดงขึ้นมาเฉพาะตอนที่กด Sit Out / Sit In ใหม่เท่านั้น
+            if(isReady && gameState.stage !== 'Waiting to Deal' && gameState.stage !== 'Hand Ended' && gameState.stage !== 'Showdown') {
+                btnContainer.classList.add('hidden');
+            } else if (isSitOut) {
+                btnContainer.classList.remove('hidden');
+                const btn = document.getElementById('ready-vote-btn');
                 btn.innerText = "🚀 กดพร้อมเริ่มเกม (Ready)";
                 btn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-lg transition flex items-center gap-1.5";
+            } else {
+                btnContainer.classList.remove('hidden');
+                const btn = document.getElementById('ready-vote-btn');
+                if(isReady) {
+                    btn.innerText = "✅ ยกเลิกพร้อม (Unready)";
+                    btn.className = "bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-lg transition flex items-center gap-1.5";
+                } else {
+                    btn.innerText = "🚀 กดพร้อมเริ่มเกม (Ready)";
+                    btn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-lg transition flex items-center gap-1.5";
+                }
             }
         }
 
@@ -443,7 +457,12 @@
             await window.FB_runTransaction(roomRef, (data) => {
                 if(data && data.players[me]) {
                     data.players[me].sitOut = !data.players[me].sitOut;
-                    if(data.players[me].sitOut) { data.players[me].folded = true; data.players[me].ready = false; }
+                    if(data.players[me].sitOut) { 
+                        data.players[me].folded = true; 
+                        data.players[me].ready = false; 
+                    } else {
+                        data.players[me].ready = false; // เปิดให้กด Ready ใหม่เมื่อกลับเข้ามา Sit In
+                    }
                 }
                 return data;
             });
@@ -483,7 +502,7 @@
 
             data.playerOrder.forEach((name, idx) => {
                 if(data.players[name]) {
-                    data.players[name].ready = false;
+                    data.players[name].ready = true; // ล็อคสถานะว่าพร้อมแล้วในรอบนี้
                     if(data.players[name].sitOut || data.players[name].chips <= 0) {
                         data.players[name].holeCards = [];
                         data.players[name].folded = true;
@@ -534,7 +553,6 @@
                 if(type === 'fold') {
                     data.players[me].folded = true;
                 } else if(type === 'checkcall') {
-                    // คำนวณยอดเงินที่ต้อง Call อัตโนมัติตามยอดที่อีกคน Bet/Raise มาสูงสุด
                     const callCost = data.currentBet - data.players[me].currentBet;
                     if(callCost > 0) {
                         const paid = Math.min(callCost, data.players[me].chips);
@@ -595,17 +613,47 @@
             const allCards = [...holeCards, ...communityCards];
             const valuesMap = { '2':2, '3':3, '4':4, '5':5, '6':6, '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14 };
             let parsed = allCards.map(c => ({ val: valuesMap[c.slice(0, -2)] || 2, suit: c.slice(-2) })).sort((a,b) => b.val - a.val);
+            
+            let counts = {};
+            parsed.forEach(c => counts[c.val] = (counts[c.val] || 0) + 1);
+            let countArr = Object.values(counts);
+
+            if(countArr.includes(4)) return { score: 700, name: "Four of a Kind" };
+            if(countArr.includes(3) && countArr.includes(2)) return { score: 600, name: "Full House" };
+            if(countArr.includes(3)) return { score: 300, name: "Three of a Kind" };
+            if(countArr.filter(c => c === 2).length >= 2) return { score: 200, name: "Two Pair" };
+            if(countArr.includes(2)) return { score: 100, name: "One Pair" };
             return { score: parsed[0].val, name: "High Card" };
         }
 
         function executeShowdownData(data) {
             data.stage = 'Showdown';
             const active = data.playerOrder.filter(n => data.players[n] && !data.players[n].folded && !data.players[n].sitOut);
-            if(active.length > 0) {
-                const share = Math.floor(data.pot / active.length);
-                active.forEach(n => { 
-                    data.players[n].chips += share; 
-                    data.players[n].resultText = `👑 ชนะ! ได้รับ ${share} ฿`; 
+            
+            let evaluated = active.map(name => {
+                let p = data.players[name];
+                let res = evaluateHand(p.holeCards, data.communityCards);
+                return { name, score: res.score, nameDesc: res.name };
+            });
+
+            if(evaluated.length > 0) {
+                evaluated.sort((a, b) => b.score - a.score);
+                let bestScore = evaluated[0].score;
+                let winners = evaluated.filter(e => e.score === bestScore).map(e => e.name);
+
+                const share = Math.floor(data.pot / winners.length);
+                winners.forEach(wName => {
+                    if(data.players[wName]) {
+                        data.players[wName].chips += share;
+                    }
+                });
+
+                active.forEach(name => {
+                    let ev = evaluated.find(e => e.name === name);
+                    let isWin = winners.includes(name);
+                    if(ev) {
+                        data.players[name].resultText = `${ev.nameDesc} ${isWin ? `👑 (+${share}฿)` : ''}`;
+                    }
                 });
             }
             data.pot = 0;
@@ -639,9 +687,21 @@
                     (p.ready ? `<span class="text-[9px] text-emerald-400 font-bold">✅ Ready</span>` : `<span class="text-[9px] text-amber-400">⏳ Not Ready</span>`) : 
                     (p.sitOut ? '🛌 Sit Out' : (p.folded ? '🔴 Folded' : `Bet: ${p.currentBet}`));
 
-                let showdownText = (gameState.stage === 'Showdown' && p.resultText) ? `<div class="text-[9px] text-emerald-300 font-bold mt-0.5">${p.resultText}</div>` : '';
+                // โชว์ไพ่และ Hand เมื่อถึงรอบ Showdown สำหรับคนที่ยังไม่หมอบ
+                let showdownCardHtml = '';
+                if(gameState.stage === 'Showdown' && p.holeCards && p.holeCards.length > 0 && !p.folded && !p.sitOut) {
+                    showdownCardHtml = `
+                        <div class="mt-1 bg-black/60 p-1 rounded border border-amber-500/50">
+                            <div class="flex justify-center gap-1 text-xs">
+                                <span class="bg-amber-100 text-slate-900 font-bold px-1 rounded">${p.holeCards[0]}</span>
+                                <span class="bg-amber-100 text-slate-900 font-bold px-1 rounded">${p.holeCards[1]}</span>
+                            </div>
+                            <div class="text-[9px] text-emerald-300 font-bold mt-0.5 truncate">${p.resultText || ''}</div>
+                        </div>
+                    `;
+                }
 
-                return `<div class="absolute transform -translate-x-1/2 -translate-y-1/2" style="left:${x}%; top:${y}%;"><div class="bg-slate-900/95 border ${isMyTurn ? 'active-turn border-amber-400' : 'border-slate-700'} rounded-xl p-2 w-36 text-center shadow-lg"><div class="font-bold text-xs text-white truncate">${name}</div><div class="text-emerald-400 font-mono text-xs">${p.chips} ฿</div><div class="text-[9px] text-slate-400">${readyBadge}</div>${showdownText}</div></div>`;
+                return `<div class="absolute transform -translate-x-1/2 -translate-y-1/2" style="left:${x}%; top:${y}%;"><div class="bg-slate-900/95 border ${isMyTurn ? 'active-turn border-amber-400' : 'border-slate-700'} rounded-xl p-2 w-38 text-center shadow-xl"><div class="font-bold text-xs text-white truncate">${name}</div><div class="text-emerald-400 font-mono text-xs">${p.chips} ฿</div><div class="text-[9px] text-slate-400">${readyBadge}</div>${showdownCardHtml}</div></div>`;
             }).join('');
         }
 
