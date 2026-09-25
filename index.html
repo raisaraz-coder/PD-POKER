@@ -57,8 +57,11 @@
                 <h1 class="text-xl md:text-2xl font-bold text-amber-400 flex items-center gap-2">♠️ Poker Cash Game & Hand Evaluator</h1>
                 <p class="text-xs md:text-sm text-slate-400">Oval 10-Player Layout, Robust Turn Management & Fixed Betting Rounds</p>
             </div>
-            <div id="room-badge" class="mt-2 md:mt-0 px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
-                Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
+            <div class="flex items-center gap-2 mt-2 md:mt-0">
+                <button onclick="openStatsModal()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-full text-xs text-amber-300 font-bold transition">📊 สถิติผู้เล่นสะสม</button>
+                <div id="room-badge" class="px-3 py-1 bg-slate-700 rounded-full text-xs text-amber-300 font-mono hidden">
+                    Room: <span id="current-room-code"></span> | Role: <span id="current-role-badge" class="font-bold text-white"></span>
+                </div>
             </div>
         </div>
 
@@ -220,6 +223,32 @@
                 <div class="flex gap-3 pt-2">
                     <button onclick="closeTableModalCancel()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-medium py-2.5 rounded-xl transition">Cancel</button>
                     <button onclick="confirmFinalizeGame()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition shadow-lg">Confirm & Summarize</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Cumulative Player Stats -->
+        <div id="modal-stats" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xl font-bold text-amber-400">📊 สถิติสะสมผู้เล่นทั้งหมด</h3>
+                    <button onclick="closeStatsModal()" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
+                </div>
+                <p class="text-xs text-slate-400">รวมทุกโต๊ะ ทุกห้อง ที่เคยกด "ปิดโต๊ะ" (Close Table) มาแล้ว</p>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm text-slate-300">
+                        <thead class="bg-slate-900 text-slate-400 uppercase text-xs">
+                            <tr>
+                                <th class="px-3 py-2">ผู้เล่น</th>
+                                <th class="px-3 py-2 text-center">จำนวนเกม</th>
+                                <th class="px-3 py-2 text-right">กำไร/ขาดทุนสะสม</th>
+                                <th class="px-3 py-2 text-right">ดีที่สุด</th>
+                                <th class="px-3 py-2 text-right">แย่ที่สุด</th>
+                                <th class="px-3 py-2">เล่นล่าสุด</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stats-table-body"><tr><td colspan="6" class="text-center text-slate-500 italic py-4">กำลังโหลด...</td></tr></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -452,12 +481,30 @@
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
             await window.FB_runTransaction(roomRef, (data) => {
                 if(data && data.players[me]) {
-                    data.players[me].sitOut = !data.players[me].sitOut;
-                    if(data.players[me].sitOut) { 
-                        data.players[me].folded = true; 
-                        data.players[me].ready = false; 
-                    } else {
-                        data.players[me].ready = false;
+                    const goingSitOut = !data.players[me].sitOut;
+                    const wasAlreadyFolded = data.players[me].folded;
+                    data.players[me].sitOut = goingSitOut;
+                    data.players[me].ready = false;
+
+                    const handInProgress = data.playerOrder && data.playerOrder.length > 0 &&
+                        data.stage !== 'Waiting to Deal' && data.stage !== 'Showdown' && data.stage !== 'Hand Ended';
+
+                    if(goingSitOut) {
+                        data.players[me].folded = true;
+
+                        // สำคัญมาก: ถ้ามือกำลังเล่นอยู่ ต้องเช็คว่าเกมต้องเดินหน้าต่อไหม
+                        // ไม่งั้นถ้าคน Sit Out ตอนถึงตาตัวเอง เกมจะค้าง (ไม่มีใคร Action ต่อได้)
+                        if(handInProgress && !wasAlreadyFolded) {
+                            if(data.playerOrder[data.activeTurnIndex] === me) {
+                                const roundDone = checkAndAdvanceIfRoundComplete(data);
+                                if(!roundDone) {
+                                    data.activeTurnIndex = getNextActiveTurn(data.playerOrder, data.players, data.activeTurnIndex);
+                                }
+                            } else {
+                                const activeNow = data.playerOrder.filter(n => data.players[n] && !data.players[n].folded && !data.players[n].sitOut);
+                                if(activeNow.length <= 1) executeShowdownData(data);
+                            }
+                        }
                     }
                 }
                 return data;
@@ -561,7 +608,18 @@
             }
 
             const roomRef = window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode);
-            const raiseVal = type === 'raise' ? (parseInt(document.getElementById('raise-amount').value) || 40) : 0;
+            const raiseVal = type === 'raise' ? (parseInt(document.getElementById('raise-amount').value) || 0) : 0;
+
+            if(type === 'raise') {
+                const myP = gameState.players[me];
+                const myStack = myP.currentBet + myP.chips;
+                const minRaiseTo = gameState.currentBet + (gameState.bigBlind || 20);
+                const isAllIn = raiseVal >= myStack;
+                if(raiseVal <= myP.currentBet || (!isAllIn && raiseVal < minRaiseTo)) {
+                    alert(`ยอด Raise ต้องอย่างน้อย ${minRaiseTo} ฿ (หรือ All-in ${myStack} ฿)`);
+                    return;
+                }
+            }
 
             await window.FB_runTransaction(roomRef, (data) => {
                 if(!data || data.stage === 'Showdown' || data.stage === 'Waiting to Deal') return data;
@@ -583,12 +641,18 @@
                         data.pot += paid;
                     }
                 } else if(type === 'raise') {
-                    const cost = raiseVal - data.players[me].currentBet;
-                    if(data.players[me].chips >= cost) {
+                    const myStack = data.players[me].currentBet + data.players[me].chips;
+                    // กันเงินติดลบ/หลุด: จำกัดยอด raise ไว้ไม่เกินเงินที่มีทั้งหมด (all-in) และห้ามต่ำกว่ายอดปัจจุบัน
+                    const targetBet = Math.min(Math.max(raiseVal, 0), myStack);
+                    const isAllIn = targetBet === myStack;
+                    const minRaiseTo = data.currentBet + (data.bigBlind || 20);
+
+                    if(targetBet > data.players[me].currentBet && (isAllIn || targetBet >= minRaiseTo)) {
+                        const cost = targetBet - data.players[me].currentBet;
                         data.players[me].chips -= cost;
-                        data.players[me].currentBet = raiseVal;
+                        data.players[me].currentBet = targetBet;
                         data.pot += cost;
-                        data.currentBet = raiseVal;
+                        data.currentBet = targetBet;
                         // เมื่อมีการ Raise ให้รีเซ็ตสถานะ hasActed ของผู้เล่นคนอื่น เพื่อให้ทุกคนได้มีโอกาสตอบสนองต่อยอด Bet ใหม่
                         data.playerOrder.forEach(n => {
                             if(data.players[n] && n !== me && !data.players[n].folded && !data.players[n].sitOut) {
@@ -596,28 +660,46 @@
                             }
                         });
                     }
+                    // ถ้ายอด raise ไม่ถูกต้อง (ต่ำกว่าขั้นต่ำ ฯลฯ) จะไม่ทำอะไรเลย กันสถานะเกมพัง
                 }
 
-                const active = data.playerOrder.filter(n => data.players[n] && !data.players[n].folded && !data.players[n].sitOut);
-                if(active.length <= 1) {
-                    executeShowdownData(data);
-                } else {
-                    // เงื่อนไขจบ Betting Round: ทุกคนต้องได้ Action แล้ว และยอดเงินต้องเท่ากันทั้งหมด
-                    const allHaveActed = active.every(n => data.players[n].chips === 0 || data.players[n].hasActed);
-                    const allBetsMatch = active.every(n => data.players[n].chips === 0 || data.players[n].currentBet === data.currentBet);
-
-                    if(allHaveActed && allBetsMatch) {
-                        if(data.stage === 'River') {
-                            executeShowdownData(data);
-                        } else {
-                            advanceStageData(data);
-                        }
-                    } else {
-                        data.activeTurnIndex = getNextActiveTurn(data.playerOrder, data.players, data.activeTurnIndex);
-                    }
+                const roundDone = checkAndAdvanceIfRoundComplete(data);
+                if(!roundDone) {
+                    data.activeTurnIndex = getNextActiveTurn(data.playerOrder, data.players, data.activeTurnIndex);
                 }
                 return data;
             });
+        }
+
+        // รวม Logic การเช็คจบ Betting Round ไว้ที่เดียว ใช้ทั้งตอนกด Action ปกติ และตอน Sit Out
+        // คืนค่า true ถ้าจบรอบ/ไปหน้าถัดไปแล้ว (ไม่ต้องขยับตาต่อ), false ถ้ายังไม่จบรอบ
+        function checkAndAdvanceIfRoundComplete(data) {
+            const active = data.playerOrder.filter(n => data.players[n] && !data.players[n].folded && !data.players[n].sitOut);
+            if(active.length <= 1) {
+                executeShowdownData(data);
+                return true;
+            }
+            // เงื่อนไขจบ Betting Round: ทุกคนต้องได้ Action แล้ว และยอดเงินต้องเท่ากันทั้งหมด
+            const allHaveActed = active.every(n => data.players[n].chips === 0 || data.players[n].hasActed);
+            const allBetsMatch = active.every(n => data.players[n].chips === 0 || data.players[n].currentBet === data.currentBet);
+            if(!allHaveActed || !allBetsMatch) return false;
+
+            if(data.stage === 'River') {
+                executeShowdownData(data);
+                return true;
+            }
+            advanceStageData(data);
+            // ถ้าทุกคนที่เหลือ All-in กันหมดแล้ว (เงินเหลือ 0 ไม่ถึง 2 คน) ไม่มีใคร Action ต่อได้
+            // ให้แจกไพ่ที่เหลือรวดเดียวไปจน Showdown อัตโนมัติ กันเกมค้าง
+            let guard = 0;
+            while(active.filter(n => data.players[n].chips > 0).length < 2 && data.stage !== 'River' && guard < 5) {
+                advanceStageData(data);
+                guard++;
+            }
+            if(active.filter(n => data.players[n].chips > 0).length < 2 && data.stage === 'River') {
+                executeShowdownData(data);
+            }
+            return true;
         }
 
         function getNextActiveTurn(order, players, idx) {
@@ -806,6 +888,13 @@
             const myData = gameState.players[gameState.myPlayerName];
             document.getElementById('my-hole-cards').innerHTML = myData?.holeCards?.length ? myData.holeCards.map(c => `<div class="bg-amber-100 text-slate-900 font-bold px-3 py-2 rounded shadow">${c}</div>`).join('') : `<span class="text-xs text-slate-500">No cards</span>`;
 
+            const raiseInput = document.getElementById('raise-amount');
+            if(raiseInput && document.activeElement !== raiseInput) {
+                const minRaiseTo = gameState.currentBet + (gameState.bigBlind || 20);
+                raiseInput.min = minRaiseTo;
+                if(!raiseInput.value || parseInt(raiseInput.value) < minRaiseTo) raiseInput.value = minRaiseTo;
+            }
+
             const seats = document.getElementById('poker-seats-container');
             const total = gameState.playerOrder.length;
             if(!total) { seats.innerHTML = ""; return; }
@@ -850,9 +939,66 @@
             });
             gameState.isClosed = true;
             await window.FB_set(window.FB_ref(window.FB_db, 'poker_rooms/' + gameState.roomCode), gameState);
+            await saveStatsAfterClose();
             document.getElementById('modal-close-table').classList.add('hidden');
             showSummaryView();
         }
+
+        // ===== ระบบเก็บสถิติสะสมผู้เล่น (ข้ามห้อง/ข้ามเซสชัน) =====
+        function encodeStatKey(name) {
+            // Firebase Realtime Database ห้ามใช้อักขระ . # $ [ ] / ในชื่อ key
+            return name.replace(/[.#$\[\]\/]/g, '_');
+        }
+
+        async function saveStatsAfterClose() {
+            const jobs = Object.entries(gameState.players).map(([name, p]) => {
+                const buyIn = p.totalBuyIn || gameState.buyIn;
+                const cashOut = p.chips;
+                const net = cashOut - buyIn;
+                const statRef = window.FB_ref(window.FB_db, 'poker_stats/' + encodeStatKey(name));
+                return window.FB_runTransaction(statRef, (s) => {
+                    if(!s) s = { name, sessions: 0, totalNet: 0, totalBuyIn: 0, totalCashOut: 0, bestSession: net, worstSession: net, history: {} };
+                    s.name = name;
+                    s.sessions = (s.sessions || 0) + 1;
+                    s.totalNet = (s.totalNet || 0) + net;
+                    s.totalBuyIn = (s.totalBuyIn || 0) + buyIn;
+                    s.totalCashOut = (s.totalCashOut || 0) + cashOut;
+                    s.bestSession = s.bestSession === undefined ? net : Math.max(s.bestSession, net);
+                    s.worstSession = s.worstSession === undefined ? net : Math.min(s.worstSession, net);
+                    s.lastPlayed = Date.now();
+                    if(!s.history) s.history = {};
+                    s.history['t' + Date.now() + '_' + Math.floor(Math.random() * 1000)] = {
+                        net, buyIn, cashOut, roomCode: gameState.roomCode, date: new Date().toISOString()
+                    };
+                    return s;
+                });
+            });
+            await Promise.all(jobs);
+        }
+
+        async function openStatsModal() {
+            const body = document.getElementById('stats-table-body');
+            body.innerHTML = `<tr><td colspan="6" class="text-center text-slate-500 italic py-4">กำลังโหลด...</td></tr>`;
+            document.getElementById('modal-stats').classList.remove('hidden');
+            try {
+                const snap = await window.FB_get(window.FB_ref(window.FB_db, 'poker_stats'));
+                const data = snap.exists() ? snap.val() : {};
+                const rows = Object.values(data).sort((a, b) => (b.totalNet || 0) - (a.totalNet || 0));
+                body.innerHTML = rows.length === 0
+                    ? `<tr><td colspan="6" class="text-center text-slate-500 italic py-4">ยังไม่มีข้อมูลสถิติ ลองปิดโต๊ะสักครั้งก่อนครับ</td></tr>`
+                    : rows.map(r => `<tr class="border-b border-slate-700">
+                        <td class="px-3 py-2 font-medium">${r.name}</td>
+                        <td class="px-3 py-2 text-center">${r.sessions || 0}</td>
+                        <td class="px-3 py-2 text-right font-bold ${(r.totalNet || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(r.totalNet || 0) >= 0 ? '+' : ''}${r.totalNet || 0} ฿</td>
+                        <td class="px-3 py-2 text-right text-emerald-400">${r.bestSession !== undefined ? (r.bestSession >= 0 ? '+' : '') + r.bestSession : '-'} ฿</td>
+                        <td class="px-3 py-2 text-right text-rose-400">${r.worstSession !== undefined ? r.worstSession : '-'} ฿</td>
+                        <td class="px-3 py-2 text-xs text-slate-400">${r.lastPlayed ? new Date(r.lastPlayed).toLocaleDateString('th-TH') : '-'}</td>
+                    </tr>`).join('');
+            } catch(e) {
+                body.innerHTML = `<tr><td colspan="6" class="text-center text-rose-400 italic py-4">โหลดสถิติไม่สำเร็จ: ${e.message}</td></tr>`;
+            }
+        }
+        function closeStatsModal() { document.getElementById('modal-stats').classList.add('hidden'); }
         function showSummaryView() {
             if(unsubscribeFirebase) unsubscribeFirebase();
             document.getElementById('view-game').classList.add('hidden');
